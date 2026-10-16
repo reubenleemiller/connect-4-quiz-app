@@ -15,7 +15,7 @@ D) Mercury
 Answer: B
 ```
 
-The importer also accepts `A.`, `A:`, or `A -` choices, plus `Correct answer: B`. The question, choices, and answer must be editable Google Slides text rather than part of an image.
+The importer also accepts `A.`, `A:`, or `A -` choices, plus `Correct answer: A`. The question, choices, and answer must be editable Google Slides text rather than part of an image.
 
 QuizFour embeds each source slide during play. Put the `Answer:` line in the bottom footer area of the slide: the app masks the bottom 17% of the embedded slide so students cannot see it, while still showing the slide and its question choices. Public Google Slides text export does not include speaker notes, so keep the answer as editable footer text instead of placing it in notes.
 
