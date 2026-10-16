@@ -50,9 +50,34 @@ function parseQuestion(slide, index, sourceUrl, compactPrompt = false) {
   }
 }
 
+const ANSWER_LINE = /^(?:correct\s+)?(?:answer|correct)(?:\s+is)?\s*[:=\-]?\s*\(?[A-D]\)?\b/i
+
+function splitAtAnswerLines(rawText) {
+  const blocks = []
+  let current = []
+  rawText.replace(/\r\n?/g, '\n').split('\n').forEach((line) => {
+    current.push(line)
+    const normalized = line.replace(/^\s*[•●▪◦]\s*/, '').trim()
+    if (ANSWER_LINE.test(normalized)) {
+      blocks.push(current.join('\n').trim())
+      current = []
+    }
+  })
+  if (current.join('').trim()) blocks.push(current.join('\n').trim())
+  return blocks.filter(Boolean)
+}
+
 function parseQuestions(rawText, sourceUrl) {
-  const separatedSlides = rawText.split(/\f|\n\s*---\s*\n|\n(?=slide\s+\d+\s*(?:\r?$))/gi).map((slide) => slide.trim()).filter(Boolean)
-  const candidateSlides = separatedSlides.map((text) => ({ text, compactPrompt: separatedSlides.length === 1 }))
+  const separatedSlides = rawText
+    .split(/\f|\n\s*---\s*\n|\n(?=slide\s+\d+(?:\s*[:—-]|\s*$))/gi)
+    .map((slide) => slide.trim())
+    .filter(Boolean)
+  // Google sometimes returns a flattened text export with no form feeds or
+  // slide headers. Each supported quiz slide ends in an Answer line, so use
+  // that stable marker to recover individual question blocks in that case.
+  const answerDelimitedSlides = separatedSlides.length === 1 ? splitAtAnswerLines(rawText) : []
+  const sourceSlides = answerDelimitedSlides.length > 1 ? answerDelimitedSlides : separatedSlides
+  const candidateSlides = sourceSlides.map((text) => ({ text, compactPrompt: sourceSlides.length === 1 }))
   const seen = new Set()
   return candidateSlides
     .map((slide, index) => parseQuestion(slide.text, index, sourceUrl, slide.compactPrompt))

@@ -36,8 +36,16 @@ The app supports code-based invitations and random student pairing through Supab
 
 1. In the new `connect-4-quiz-app` Supabase project, enable **Authentication → Providers → Anonymous sign-ins**.
 2. Run [docs/supabase-multiplayer-setup.sql](docs/supabase-multiplayer-setup.sql) in the project’s SQL Editor.
-3. Copy `.env.example` to `.env.local` and add the project URL plus its **publishable** key. For Vercel, add the same variables under **Project Settings → Environment Variables**, then redeploy.
+3. Copy `.env.example` to `.env.local` and add the project URL plus its **publishable** key. The values must be named `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. For Vercel, add the same variables under **Project Settings → Environment Variables**, then redeploy.
 
 The app never uses a service-role key. Anonymous students can only read rooms in which they are a player; game creation, joining, and state changes are handled through narrowly scoped database functions.
 
 In the app, choose **Play with another student**. Select **Find a random opponent** to enter the random queue, or **Create private room** to generate a six-character room code and a scannable invite QR. The host receives a **Start game** button as soon as their opponent joins.
+
+## Teacher Mode
+
+After importing a deck, open **Teacher mode** from the main page and turn it on. Choose whether students may use private study rooms, random pairing, or both, then select **Create student link**. Share that link with the class.
+
+With **Share protected deck** on, students receive the attached deck automatically and cannot replace it. With it off, the link still scopes pairing and private rooms to that class, but each room can load its own deck without changing any other room.
+
+Teacher Mode uses the Supabase SQL setup above. Re-run the current [setup script](docs/supabase-multiplayer-setup.sql) in the SQL Editor before deploying this feature; it safely adds the classroom table, room fields, and RPC functions to an existing installation.

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Copy, Crown, Flag,
-  Gamepad2, Moon, RotateCcw, Settings2, ShieldAlert, Sparkles, Sun,
+  Gamepad2, GraduationCap, Link, Moon, RotateCcw, Settings2, ShieldAlert, Sparkles, Sun,
   TimerReset, Trophy, UsersRound, Wifi, X,
 } from 'lucide-react'
-import { isSupabaseConfigured, joinMatch, saveMatchState, watchMatch } from './lib/multiplayer'
+import { createTeacherClassroom, getTeacherClassroom, isSupabaseConfigured, joinMatch, joinTeacherMatch, saveMatchState, watchMatch } from './lib/multiplayer'
 import { QRCodeSVG } from 'qrcode.react'
 
 const ROWS = 6
@@ -102,14 +102,20 @@ function TimerDial({ seconds, total }) {
   )
 }
 
-function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, canAnswer, onAnswer }) {
+function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, canAnswer, onAnswerPending, onAnswer }) {
   const [selected, setSelected] = useState(null)
+  const answerLockedRef = useRef(false)
+  const answerTimerRef = useRef(null)
   const locked = selected !== null
 
+  useEffect(() => () => window.clearTimeout(answerTimerRef.current), [])
+
   const pick = (index) => {
-    if (locked || !canAnswer) return
+    if (locked || answerLockedRef.current || !canAnswer) return
+    answerLockedRef.current = true
     setSelected(index)
-    window.setTimeout(() => onAnswer(index === question.answer), 520)
+    onAnswerPending()
+    answerTimerRef.current = window.setTimeout(() => onAnswer(index === question.answer), 1000)
   }
 
   return (
@@ -144,10 +150,10 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
               const correct = index === question.answer
               let style = 'border-white/10 bg-white/[.035] hover:border-indigo-300/60 hover:bg-indigo-400/10'
               if (locked && isChosen) style = correct ? 'border-emerald-400 bg-emerald-400/15' : 'border-rose-400 bg-rose-400/15'
-              return <button key={option} onClick={() => pick(index)} disabled={!canAnswer} className={`group flex min-h-14 items-center gap-3 rounded-xl border p-3 text-left transition ${style} ${!canAnswer ? 'cursor-not-allowed opacity-55' : ''}`}>
+              return <button key={option} data-answer-choice="true" onClick={() => pick(index)} disabled={!canAnswer} className={`group flex min-h-14 items-center gap-3 rounded-xl border p-3 text-left transition ${style} ${!canAnswer ? 'cursor-not-allowed opacity-55' : ''}`}>
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/10 text-xs font-black text-slate-300 group-hover:bg-indigo-400 group-hover:text-white">{String.fromCharCode(65 + index)}</span>
                 <span className="font-semibold text-slate-100">{option}</span>
-                {locked && isChosen && <span className="ml-auto">{correct ? <Check className="text-emerald-300" size={19} /> : <X className="text-rose-300" size={19} />}</span>}
+                {locked && isChosen && <span className="ml-auto flex items-center gap-2">{correct ? <Check className="text-emerald-300" size={19} /> : <X className="text-rose-300" size={19} />}<TinySpinner className={correct ? 'text-emerald-300' : 'text-rose-300'} /></span>}
               </button>
             })}
           </div>
@@ -158,14 +164,76 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
   )
 }
 
-function OnlineLobbyModal({ room, roomCode, onRoomCodeChange, status, error, inviteUrl, onRandomMatch, onCreateRoom, onCodeMatch, onCopyCode, onCopyInvite, onStart, onClose }) {
+function TeacherModeModal({ deckReady, deckTitle, pairing, onPairingChange, protectDeck, onProtectDeckChange, lockSettings, onLockSettingsChange, shareUrl, status, error, onCreateLink, onCopyLink, onClose }) {
+  const pairingOptions = [
+    { id: 'both', title: 'Let students choose', detail: 'Offer private study rooms and random pairing.' },
+    { id: 'private', title: 'Private rooms only', detail: 'Students create or join an invite-only study room.' },
+    { id: 'random', title: 'Random pairing only', detail: 'Students are matched with another student from this class.' },
+  ]
+  return (
+    <div className="dialog-backdrop fixed inset-0 z-[70] grid place-items-center bg-[#070b1b]/75 p-4 backdrop-blur-md">
+      <section className="dialog-surface animate-pop-in flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-white/15 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-300">Teacher controls</p><h2 className="mt-1 text-xl font-black text-white">Teacher mode</h2></div>
+          <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/10" aria-label="Close teacher mode"><X size={18} /></button>
+        </div>
+        <div className="min-h-0 space-y-4 overflow-y-auto p-5 sm:p-6">
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-indigo-300/25 bg-indigo-400/10 p-3">
+            <div><p className="font-bold text-white">Share protected deck</p><p className="mt-0.5 text-xs leading-4 text-slate-300">On locks students to this deck. Off lets each private room choose its own.</p></div>
+            <button onClick={() => onProtectDeckChange(!protectDeck)} className={`relative h-7 w-12 shrink-0 rounded-full transition ${protectDeck ? 'bg-indigo-400' : 'bg-slate-700'}`} aria-pressed={protectDeck} aria-label="Toggle protected deck sharing"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${protectDeck ? 'left-6' : 'left-1'}`} /></button>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-violet-300/25 bg-violet-400/10 p-3">
+            <div><p className="font-bold text-white">Lock student settings</p><p className="mt-0.5 text-xs leading-4 text-slate-300">Keep the timer, rules, team names, and appearance set by the teacher.</p></div>
+            <button onClick={() => onLockSettingsChange(!lockSettings)} className={`relative h-7 w-12 shrink-0 rounded-full transition ${lockSettings ? 'bg-violet-400' : 'bg-slate-700'}`} aria-pressed={lockSettings} aria-label="Toggle locked student settings"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${lockSettings ? 'left-6' : 'left-1'}`} /></button>
+          </div>
+          <>
+            <div className={`rounded-xl border p-3 ${deckReady ? 'border-emerald-300/25 bg-emerald-400/10' : protectDeck ? 'border-amber-300/25 bg-amber-400/10' : 'border-white/10 bg-white/[.04]'}`}><p className={`text-xs font-black ${deckReady ? 'text-emerald-200' : protectDeck ? 'text-amber-200' : 'text-slate-200'}`}>{deckReady ? `Attached deck: ${deckTitle}` : protectDeck ? 'Import a Google Slides deck before creating a protected student link.' : 'No deck is locked. Students can add a deck in their own private room.'}</p></div>
+            <div><p className="font-bold text-white">Student pairing</p><div className="mt-2 grid gap-2 sm:grid-cols-3">{pairingOptions.map((option) => <button key={option.id} onClick={() => onPairingChange(option.id)} className={`rounded-xl border p-2.5 text-left transition ${pairing === option.id ? 'border-indigo-300/50 bg-indigo-400/10' : 'border-white/10 bg-white/[.025] hover:bg-white/[.06]'}`}><span className="block text-xs font-black text-white">{option.title}</span><span className="mt-0.5 block text-[10px] leading-4 text-slate-400">{option.detail}</span></button>)}</div></div>
+            {shareUrl ? <div className="rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-4 text-center"><Link className="mx-auto text-emerald-200" size={21} /><p className="mt-2 text-sm font-bold text-white">Student link is ready</p><p className="mt-1 break-all text-[11px] text-emerald-200">{shareUrl}</p><button onClick={onCopyLink} className="mt-3 inline-flex items-center gap-2 text-xs font-black text-emerald-200 hover:text-white"><Copy size={14} /> Copy student link</button></div> : <button onClick={onCreateLink} disabled={protectDeck && !deckReady} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 px-4 py-3 text-sm font-black text-indigo-950 transition hover:bg-indigo-300 disabled:cursor-not-allowed disabled:opacity-45"><Link size={17} /> Create student link</button>}
+          </>
+          {!isSupabaseConfigured && <p className="rounded-xl border border-amber-300/30 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100">Creating a live student link needs Supabase. Add the project URL and publishable key, then redeploy.</p>}
+          {status && <p className="text-center text-xs font-semibold text-indigo-300">{status}</p>}
+          {error && <p className="rounded-lg bg-rose-400/10 px-3 py-2 text-center text-xs text-rose-300">{error}</p>}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function OnlineLobbyModal({ room, roomCode, onRoomCodeChange, status, error, inviteUrl, onRandomMatch, onCreateRoom, onCodeMatch, onCopyCode, onCopyInvite, onStart, onClose, classroom, matchMode }) {
   const connected = Boolean(room)
+  const waitingForPair = connected && room.room_status === 'waiting' && matchMode === 'random'
+  const allowsPrivate = !classroom || classroom.pairing === 'both' || classroom.pairing === 'private'
+  const allowsRandom = !classroom || classroom.pairing === 'both' || classroom.pairing === 'random'
+  const lobbyDescription = classroom
+    ? 'This teacher attached the deck for this session. Choose an approved study option below.'
+    : 'Get matched with the next available student, create a private room, or join a room with a six-character code.'
   return (
     <div className="dialog-backdrop fixed inset-0 z-[70] grid place-items-center bg-[#070b1b]/75 p-4 backdrop-blur-md">
       <section className="dialog-surface animate-pop-in w-full max-w-md overflow-hidden rounded-[28px] border border-white/15 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-300">Live classroom play</p><h2 className="mt-1 text-xl font-black text-white">Find an opponent</h2></div><button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/10"><X size={18} /></button></div>
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-300">{classroom ? 'Teacher Mode · protected deck' : 'Live classroom play'}</p><h2 className="mt-1 text-xl font-black text-white">{classroom ? classroom.title : 'Find an opponent'}</h2></div>
+          <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/10"><X size={18} /></button>
+        </div>
         <div className="p-6">
-          {!isSupabaseConfigured ? <div className="rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100"><b>One-time deployment step:</b> add the Supabase URL and publishable key from <code>.env.example</code> to your Vercel project, then redeploy.</div> : connected ? <div className="rounded-2xl border border-indigo-300/25 bg-indigo-400/10 p-5 text-center"><Wifi className="mx-auto text-indigo-300" size={24} /><p className="mt-3 text-sm font-bold text-white">{room.room_status === 'waiting' ? 'Invite a classmate to this private room' : 'Opponent connected — ready to play!'}</p>{room.room_status === 'waiting' && <><div className="mx-auto mt-4 w-fit rounded-2xl bg-white p-3 shadow-sm"><QRCodeSVG value={inviteUrl} size={136} level="M" includeMargin /></div><p className="mt-3 text-xs text-slate-400">They can scan this QR code, use the invite link, or enter the room code.</p><button onClick={onCopyInvite} className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-indigo-200 hover:text-white"><Copy size={14} /> Copy invite link</button></>}<div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Six-character room code</p><div className="mt-2 flex items-center justify-center gap-2"><code className="rounded-xl border border-indigo-300/30 bg-slate-950/50 px-4 py-2 text-xl font-black tracking-[.24em] text-indigo-200">{room.room_code}</code><button onClick={onCopyCode} className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-300/30 px-3 text-xs font-black text-indigo-200 hover:bg-indigo-400/10" aria-label="Copy room code"><Copy size={16} /> Copy code</button></div></div>{room.room_status === 'active' && <button onClick={onStart} disabled={room.seat !== 0} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50">{room.seat === 0 ? 'Start game' : 'Waiting for host to start'}</button>}</div> : <><p className="text-sm leading-6 text-slate-400">Get matched with the next available student, create a private room, or join a room with a six-character code.</p><button onClick={onRandomMatch} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 px-4 py-3 text-sm font-black text-indigo-950 transition hover:bg-indigo-300"><UsersRound size={17} /> Find a random opponent</button><button onClick={onCreateRoom} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-4 py-3 text-sm font-black text-emerald-200 transition hover:bg-emerald-400/20"><Copy size={17} /> Create private room</button><div className="my-5 flex items-center gap-3 text-[10px] font-black uppercase tracking-[.16em] text-slate-500"><span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" /></div><div className="flex gap-2"><input value={roomCode} maxLength="6" onChange={(event) => onRoomCodeChange(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="ROOM CODE" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-3 text-center text-sm font-black tracking-[.16em] text-white outline-none placeholder:text-slate-600 focus:border-indigo-300" /><button onClick={onCodeMatch} disabled={roomCode.length !== 6} className="rounded-xl border border-indigo-300/30 px-4 text-sm font-black text-indigo-200 transition hover:bg-indigo-400/10 disabled:cursor-not-allowed disabled:opacity-40">Join</button></div></>}
+          {!isSupabaseConfigured ? <div className="rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100"><b>One-time deployment step:</b> add the Supabase URL and publishable key from <code>.env.example</code> to your Vercel project, then redeploy.</div> : waitingForPair ? (
+            <div className="py-9 text-center"><span className="mx-auto inline-block h-14 w-14 animate-spin rounded-full border-4 border-indigo-300/25 border-t-indigo-300" /><p className="mt-5 text-xl font-black text-white">Pairing…</p><p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-slate-300">Finding another student. Your game will start automatically as soon as you’re matched.</p></div>
+          ) : connected ? (
+            <div className="rounded-2xl border border-indigo-300/25 bg-indigo-400/10 p-5 text-center">
+              <Wifi className="mx-auto text-indigo-300" size={24} />
+              <p className="mt-3 text-sm font-bold text-white">{room.room_status === 'waiting' ? 'Invite a classmate to this private room' : 'Opponent connected — ready to play!'}</p>
+              {room.room_status === 'waiting' && <><div className="mx-auto mt-4 w-fit rounded-2xl bg-white p-3 shadow-sm"><QRCodeSVG value={inviteUrl} size={136} level="M" includeMargin /></div><p className="mt-3 text-xs text-slate-400">They can scan this QR code, use the invite link, or enter the room code.</p><button onClick={onCopyInvite} className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-indigo-200 hover:text-white"><Copy size={14} /> Copy invite link</button></>}
+              <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Six-character room code</p><div className="mt-2 flex items-center justify-center gap-2"><code className="rounded-xl border border-indigo-300/30 bg-slate-950/50 px-4 py-2 text-xl font-black tracking-[.24em] text-indigo-200">{room.room_code}</code><button onClick={onCopyCode} className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-300/30 px-3 text-xs font-black text-indigo-200 hover:bg-indigo-400/10" aria-label="Copy room code"><Copy size={16} /> Copy code</button></div></div>
+              {room.room_status === 'active' && matchMode !== 'random' && <button onClick={onStart} disabled={room.seat !== 0} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50">{room.seat === 0 ? 'Start game' : 'Waiting for host to start'}</button>}
+            </div>
+          ) : (
+            <>
+              <p className="text-sm leading-6 text-slate-400">{lobbyDescription}</p>
+              {allowsRandom && <button onClick={onRandomMatch} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 px-4 py-3 text-sm font-black text-indigo-950 transition hover:bg-indigo-300"><UsersRound size={17} /> Find a random opponent</button>}
+              {allowsPrivate && <button onClick={onCreateRoom} className={`${allowsRandom ? 'mt-2' : 'mt-5'} inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-4 py-3 text-sm font-black text-emerald-200 transition hover:bg-emerald-400/20`}><Copy size={17} /> Create private room</button>}
+              {allowsPrivate && <><div className="my-5 flex items-center gap-3 text-[10px] font-black uppercase tracking-[.16em] text-slate-500"><span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" /></div><div className="flex gap-2"><input value={roomCode} maxLength="6" onChange={(event) => onRoomCodeChange(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} placeholder="ROOM CODE" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-3 text-center text-sm font-black tracking-[.16em] text-white outline-none placeholder:text-slate-600 focus:border-indigo-300" /><button onClick={onCodeMatch} disabled={roomCode.length !== 6} className="rounded-xl border border-indigo-300/30 px-4 text-sm font-black text-indigo-200 transition hover:bg-indigo-400/10 disabled:cursor-not-allowed disabled:opacity-40">Join</button></div></>}
+            </>
+          )}
           {status && <p className="mt-4 text-center text-xs font-semibold text-indigo-300">{status}</p>}
           {error && <p className="mt-3 rounded-lg bg-rose-400/10 px-3 py-2 text-center text-xs text-rose-300">{error}</p>}
         </div>
@@ -174,7 +242,7 @@ function OnlineLobbyModal({ room, roomCode, onRoomCodeChange, status, error, inv
   )
 }
 
-function SettingsModal({ theme, onThemeChange, timerEnabled, onTimerEnabledChange, timerDuration, onTimerDurationChange, winRules, onRulesChange, teamNames, onTeamNamesChange, onClose }) {
+function SettingsModal({ theme, onThemeChange, timerEnabled, onTimerEnabledChange, timerDuration, onTimerDurationChange, winRules, onRulesChange, teamNames, onTeamNamesChange, locked = false, onClose }) {
   const ruleOptions = [
     { id: 'horizontal', label: 'Horizontal', helper: 'Across a row', glyph: '—' },
     { id: 'vertical', label: 'Vertical', helper: 'Up a column', glyph: '│' },
@@ -195,6 +263,8 @@ function SettingsModal({ theme, onThemeChange, timerEnabled, onTimerEnabledChang
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 text-slate-300 transition hover:bg-white/10" aria-label="Close settings"><X size={18} /></button>
         </div>
         <div className="min-h-0 space-y-6 overflow-y-auto p-6">
+          {locked && <p className="rounded-xl border border-violet-300/30 bg-violet-400/10 px-3 py-2 text-xs font-semibold leading-5 text-violet-100">Your teacher locked these settings for this classroom.</p>}
+          <fieldset disabled={locked} className={locked ? 'pointer-events-none opacity-55' : ''}>
           <div>
             <div className="flex items-center justify-between"><div><p className="font-bold text-white">Appearance</p><p className="mt-0.5 text-xs text-slate-400">Use the color scheme that suits the room.</p></div></div>
             <div className="mt-3 grid grid-cols-2 rounded-xl border border-white/10 bg-slate-950/35 p-1">
@@ -224,6 +294,7 @@ function SettingsModal({ theme, onThemeChange, timerEnabled, onTimerEnabledChang
               <label className="text-[10px] font-black uppercase tracking-[.13em] text-amber-200">Gold team<input value={teamNames[1]} maxLength="32" onChange={(event) => onTeamNamesChange([teamNames[0], event.target.value])} className="mt-1.5 w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-amber-300" /></label>
             </div>
           </div>
+          </fieldset>
         </div>
       </section>
     </div>
@@ -268,8 +339,18 @@ export default function App() {
   const [onlineLobbyOpen, setOnlineLobbyOpen] = useState(false)
   const [onlineRoom, setOnlineRoom] = useState(null)
   const [onlineRoomCode, setOnlineRoomCode] = useState('')
+  const [onlineMatchMode, setOnlineMatchMode] = useState(null)
   const [onlineStatus, setOnlineStatus] = useState('')
   const [onlineError, setOnlineError] = useState('')
+  const [teacherModeOpen, setTeacherModeOpen] = useState(false)
+  const [teacherModeEnabled, setTeacherModeEnabled] = useState(false)
+  const [protectTeacherDeck, setProtectTeacherDeck] = useState(true)
+  const [lockStudentSettings, setLockStudentSettings] = useState(true)
+  const [teacherPairing, setTeacherPairing] = useState('both')
+  const [teacherShareUrl, setTeacherShareUrl] = useState('')
+  const [teacherStatus, setTeacherStatus] = useState('')
+  const [teacherError, setTeacherError] = useState('')
+  const [classroom, setClassroom] = useState(null)
   const [theme, setTheme] = useState('light')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [timerEnabled, setTimerEnabled] = useState(true)
@@ -278,12 +359,17 @@ export default function App() {
   const [seconds, setSeconds] = useState(20)
   const [isSteal, setIsSteal] = useState(false)
   const [canDrop, setCanDrop] = useState(false)
+  const [answerPending, setAnswerPending] = useState(false)
+  const [classicMode, setClassicMode] = useState(false)
   const [lastDrop, setLastDrop] = useState(null)
   const [winner, setWinner] = useState(null)
   const [score, setScore] = useState([0, 0])
   const [message, setMessage] = useState('Answer a question to unlock your move.')
   const timerRef = useRef(null)
   const applyingRemoteState = useRef(false)
+  const autoStartedRoomRef = useRef(null)
+  const pendingLocalSyncRef = useRef(false)
+  const syncVersionRef = useRef(0)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIsAppLoading(false), 1100)
@@ -292,7 +378,7 @@ export default function App() {
 
   const showButtonSpinner = (event) => {
     const button = event.target.closest?.('button')
-    if (!button || button.disabled || button.dataset.pressLoading === 'true') return
+    if (!button || button.disabled || button.dataset.pressLoading === 'true' || button.dataset.answerChoice === 'true') return
     button.dataset.pressLoading = 'true'
     button.setAttribute('aria-busy', 'true')
     window.setTimeout(() => {
@@ -301,16 +387,45 @@ export default function App() {
     }, 600)
   }
 
+  const markLocalStateChange = () => {
+    pendingLocalSyncRef.current = true
+    syncVersionRef.current += 1
+  }
+
   const gameTeams = teams.map((item, index) => ({ ...item, name: teamNames[index].trim() || `Team ${index + 1}` }))
   const question = questionBank.length ? questionBank[questionIndex % questionBank.length] : null
   const team = gameTeams[activeTeam]
   const availableColumns = useMemo(() => Array.from({ length: COLS }, (_, col) => getOpenRow(board, col) !== -1), [board])
   const isMyTurn = !onlineRoom || (onlineRoom.room_status === 'active' && onlineRoom.seat === activeTeam)
 
+  const applyTeacherSettings = (settings) => {
+    if (!settings || typeof settings !== 'object') return
+    if (settings.theme === 'light' || settings.theme === 'dark') setTheme(settings.theme)
+    if (typeof settings.timerEnabled === 'boolean') setTimerEnabled(settings.timerEnabled)
+    const duration = Number(settings.timerDuration)
+    if (Number.isFinite(duration) && duration >= 1) {
+      const normalizedDuration = Math.floor(duration)
+      setTimerDuration(normalizedDuration)
+      setSeconds(normalizedDuration)
+    }
+    if (Array.isArray(settings.teamNames) && settings.teamNames.length === 2) {
+      setTeamNames(settings.teamNames.map((name, index) => typeof name === 'string' ? name.slice(0, 32) : teams[index].name))
+    }
+    if (settings.winRules && typeof settings.winRules === 'object') {
+      const savedRules = {
+        horizontal: Boolean(settings.winRules.horizontal),
+        vertical: Boolean(settings.winRules.vertical),
+        diagonalDown: Boolean(settings.winRules.diagonalDown),
+        diagonalUp: Boolean(settings.winRules.diagonalUp),
+      }
+      if (Object.values(savedRules).some(Boolean)) setWinRules(savedRules)
+    }
+  }
+
   const snapshotGame = () => ({
     board, activeTeam, phase, questionIndex, questionBank, usedQuestions, teamNames,
     timerEnabled, timerDuration, seconds, isSteal, canDrop, lastDrop, winner, score, message,
-    winRules,
+    winRules, deckTitle, teacherMode: Boolean(classroom),
   })
 
   const applyRemoteGame = (state) => {
@@ -333,15 +448,21 @@ export default function App() {
     setScore(state.score ?? [0, 0])
     setMessage(state.message || 'Connected to a live game.')
     setWinRules(state.winRules || { horizontal: true, vertical: true, diagonalDown: true, diagonalUp: true })
+    setDeckTitle(state.deckTitle || 'Google Slides quiz')
   }
 
   const connectOnline = async (code, mode = 'random') => {
     setOnlineError('')
-    setOnlineStatus('Connecting you to a game…')
+    setOnlineMatchMode(mode === 'random' ? 'random' : 'private')
+    setOnlineStatus(mode === 'random' ? 'Pairing you with another student…' : 'Connecting you to a game…')
     try {
-      const room = await joinMatch({ roomCode: code, mode, initialState: snapshotGame() })
+      const room = classroom
+        ? await joinTeacherMatch({ classCode: classroom.class_code, roomCode: code, mode, initialState: snapshotGame() })
+        : await joinMatch({ roomCode: code, mode, initialState: snapshotGame() })
       setOnlineRoom(room)
-      setOnlineStatus(room.room_status === 'waiting' ? 'Room created. Share the code or wait for a random match.' : 'Match found. You are connected live.')
+      setOnlineStatus(room.room_status === 'waiting'
+        ? (mode === 'random' ? 'Pairing you with another student…' : 'Room created. Share the code or wait for a random match.')
+        : 'Match found. Starting your game…')
       if (room.game_state?.board) applyRemoteGame(room.game_state)
     } catch (error) {
       setOnlineStatus('')
@@ -379,7 +500,8 @@ export default function App() {
 
   const copyInviteLink = async () => {
     if (!onlineRoom?.room_code) return
-    const inviteUrl = `${window.location.origin}${window.location.pathname}?join=${onlineRoom.room_code}`
+    const classroomQuery = classroom ? `class=${encodeURIComponent(classroom.class_code)}&` : ''
+    const inviteUrl = `${window.location.origin}${window.location.pathname}?${classroomQuery}join=${onlineRoom.room_code}`
     try {
       await copyText(inviteUrl)
       setOnlineStatus('Invite link copied. Your classmate can open it or scan the QR code.')
@@ -388,15 +510,74 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('join')
-    if (code && /^[A-Z0-9]{6}$/i.test(code)) {
-      setOnlineRoomCode(code.toUpperCase())
-      setOnlineLobbyOpen(true)
+  const createStudentLink = async () => {
+    setTeacherError('')
+    setTeacherStatus('Creating your protected classroom…')
+    try {
+      const created = await createTeacherClassroom({
+        title: deckTitle || 'QuizFour study deck',
+        deckState: {
+          questionBank,
+          deckTitle,
+          settings: { theme, timerEnabled, timerDuration, winRules, teamNames, settingsLocked: lockStudentSettings },
+        },
+        pairing: teacherPairing,
+        protectDeck: protectTeacherDeck,
+      })
+      const url = `${window.location.origin}${window.location.pathname}?class=${created.class_code}`
+      setTeacherShareUrl(url)
+      setTeacherStatus('Student link created. Share it with your class.')
+    } catch (error) {
+      setTeacherStatus('')
+      setTeacherError(error.message || 'Could not create the student link.')
     }
+  }
+
+  const copyStudentLink = async () => {
+    if (!teacherShareUrl) return
+    try {
+      await copyText(teacherShareUrl)
+      setTeacherStatus('Student link copied.')
+    } catch (error) {
+      setTeacherError(error.message || 'Copy was blocked. Select and copy the link above.')
+    }
+  }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const classCode = params.get('class')
+    const roomCode = params.get('join')
+    if (!classCode || !/^[A-Z0-9]{6,8}$/i.test(classCode)) {
+      if (roomCode && /^[A-Z0-9]{6}$/i.test(roomCode)) {
+        setOnlineRoomCode(roomCode.toUpperCase())
+        setOnlineLobbyOpen(true)
+      }
+      return
+    }
+    let current = true
+    setOnlineStatus('Loading your teacher’s study deck…')
+    getTeacherClassroom(classCode).then((loaded) => {
+      if (!current) return
+      setClassroom({ ...loaded, settings_locked: loaded.deck_state?.settings?.settingsLocked !== false })
+      setQuestionBank(loaded.deck_state?.questionBank || [])
+      setQuestionIndex(0)
+      setUsedQuestions([])
+      setDeckTitle(loaded.deck_state?.deckTitle || loaded.title)
+      applyTeacherSettings(loaded.deck_state?.settings)
+      if (roomCode && /^[A-Z0-9]{6}$/i.test(roomCode)) setOnlineRoomCode(roomCode.toUpperCase())
+      setOnlineLobbyOpen(true)
+      setOnlineStatus('Teacher deck loaded. Choose a study room.')
+    }).catch((error) => {
+      if (!current) return
+      setOnlineStatus('')
+      setOnlineError(error.message || 'This teacher link could not be opened.')
+      setOnlineLobbyOpen(true)
+    })
+    return () => { current = false }
   }, [])
 
   const beginQuestion = (teamIndex, steal = false) => {
+    markLocalStateChange()
     setActiveTeam(teamIndex)
     setIsSteal(steal)
     setSeconds(timerDuration)
@@ -410,6 +591,7 @@ export default function App() {
       return
     }
     if (!isMyTurn) return
+    setClassicMode(false)
     const initialBoard = emptyBoard()
     const startMessage = questionBank.length
       ? `${gameTeams[0].name} open the game. Select a question tile to begin.`
@@ -437,6 +619,21 @@ export default function App() {
     }
   }
 
+  const startClassicGame = () => {
+    window.clearInterval(timerRef.current)
+    const initialBoard = emptyBoard()
+    setClassicMode(true)
+    setBoard(initialBoard)
+    setActiveTeam(0)
+    setQuestionIndex(0)
+    setUsedQuestions([])
+    setCanDrop(true)
+    setWinner(null)
+    setLastDrop(null)
+    setPhase('board')
+    setMessage(`${gameTeams[0].name} opens the game. Drop a disc in any column.`)
+  }
+
   const restartMatch = () => {
     setBoard(emptyBoard())
     setActiveTeam(0)
@@ -448,6 +645,10 @@ export default function App() {
   }
 
   const importDeck = async () => {
+    if (classroom?.deck_protected) {
+      setDeckStatus('This teacher session has a protected deck. Loading another deck is disabled.')
+      return
+    }
     if (!deckUrl.trim()) {
       setDeckStatus('Paste a Google Slides sharing link first.')
       return
@@ -468,6 +669,7 @@ export default function App() {
       setQuestionIndex(0)
       setUsedQuestions([])
       setDeckTitle(data.title || 'Google Slides quiz')
+      setTeacherShareUrl('')
       setDeckStatus(`${data.slides.length} question slides ready.`)
     } catch (error) {
       setDeckStatus(error.message || 'Could not import the deck.')
@@ -481,7 +683,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (phase !== 'question' || !timerEnabled || !isMyTurn) return undefined
+    if (phase !== 'question' || !timerEnabled || !isMyTurn || answerPending) return undefined
     timerRef.current = window.setInterval(() => {
       setSeconds((current) => {
         if (current <= 1) {
@@ -493,7 +695,7 @@ export default function App() {
       })
     }, 1000)
     return () => window.clearInterval(timerRef.current)
-  }, [phase, isSteal, questionIndex, timerEnabled, isMyTurn])
+  }, [phase, isSteal, questionIndex, timerEnabled, isMyTurn, answerPending])
 
   useEffect(() => {
     if (!onlineRoom?.room_id) return undefined
@@ -511,20 +713,36 @@ export default function App() {
   }, [onlineRoom?.room_status, phase])
 
   useEffect(() => {
-    if (!onlineRoom?.room_id || onlineRoom.room_status !== 'active') return undefined
+    if (onlineMatchMode !== 'random' || onlineRoom?.room_status !== 'active' || onlineRoom.seat !== 0) return
+    if (autoStartedRoomRef.current === onlineRoom.room_id) return
+    autoStartedRoomRef.current = onlineRoom.room_id
+    setOnlineStatus('Pair found — starting your game…')
+    startGame()
+  }, [onlineMatchMode, onlineRoom?.room_id, onlineRoom?.room_status, onlineRoom?.seat])
+
+  useEffect(() => {
+    if (!onlineRoom?.room_id || onlineRoom.room_status !== 'active' || answerPending || (!isMyTurn && !pendingLocalSyncRef.current)) return undefined
     if (applyingRemoteState.current) {
       applyingRemoteState.current = false
+      pendingLocalSyncRef.current = false
       return undefined
     }
     const timer = window.setTimeout(() => {
-      saveMatchState(onlineRoom.room_id, snapshotGame()).catch((error) => setOnlineError(error.message || 'Could not sync the game.'))
+      const syncVersion = syncVersionRef.current
+      saveMatchState(onlineRoom.room_id, snapshotGame())
+        .then(() => {
+          if (syncVersionRef.current === syncVersion) pendingLocalSyncRef.current = false
+        })
+        .catch((error) => setOnlineError(error.message || 'Could not sync the game.'))
     }, 150)
     return () => window.clearTimeout(timer)
-  }, [board, activeTeam, phase, questionIndex, questionBank, usedQuestions, teamNames, timerEnabled, timerDuration, seconds, isSteal, canDrop, lastDrop, winner, score, message, winRules, onlineRoom?.room_id, onlineRoom?.room_status])
+  }, [board, activeTeam, phase, questionIndex, questionBank, usedQuestions, teamNames, timerEnabled, timerDuration, seconds, isSteal, canDrop, lastDrop, winner, score, message, winRules, onlineRoom?.room_id, onlineRoom?.room_status, isMyTurn, answerPending])
 
   const handleAnswer = (correct, timedOut = false) => {
     if (!isMyTurn) return
     window.clearInterval(timerRef.current)
+    setAnswerPending(false)
+    markLocalStateChange()
     setUsedQuestions((current) => current.includes(questionIndex) ? current : [...current, questionIndex])
     if (correct) {
       setPhase('board')
@@ -534,12 +752,17 @@ export default function App() {
     }
     if (!isSteal) {
       const stealingTeam = activeTeam === 0 ? 1 : 0
-      setQuestionIndex((index) => index + 1)
-      setMessage(timedOut ? `${team.name} ran out of time. ${gameTeams[stealingTeam].name}, take the steal.` : `${team.name} missed it. ${gameTeams[stealingTeam].name}, steal the move!`)
+      setMessage(timedOut ? `${team.name} ran out of time. ${gameTeams[stealingTeam].name}, take this question for the steal.` : `${team.name} missed it. ${gameTeams[stealingTeam].name}, steal this question!`)
       window.setTimeout(() => beginQuestion(stealingTeam, true), 350)
       return
     }
     const nextTeam = activeTeam === 0 ? 1 : 0
+    if (classicMode) {
+      setActiveTeam(nextTeam)
+      setCanDrop(true)
+      setMessage(`${team.name} placed a disc. ${gameTeams[nextTeam].name}, your turn.`)
+      return
+    }
     setQuestionIndex((index) => index + 1)
     setMessage(timedOut ? 'Steal window expired. The turn moves on.' : 'Steal missed. The turn moves on.')
     window.setTimeout(() => beginQuestion(nextTeam, false), 350)
@@ -547,6 +770,7 @@ export default function App() {
 
   const dropDisc = (col) => {
     if (!canDrop || !availableColumns[col] || !isMyTurn) return
+    markLocalStateChange()
     const row = getOpenRow(board, col)
     const updated = board.map((line) => [...line])
     updated[row][col] = team.id
@@ -583,7 +807,7 @@ export default function App() {
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-300 to-violet-500 text-indigo-950 shadow-glow"><Gamepad2 size={23} strokeWidth={2.5} /></div>
             <div><h1 className="text-xl font-black tracking-tight text-white">QUIZ<span className="text-indigo-300">FOUR</span></h1><p className="text-[9px] font-bold uppercase tracking-[.22em] text-slate-500">Think fast. Link four.</p></div>
           </div>
-          <div className="flex items-center gap-2"><button onClick={() => setOnlineLobbyOpen(true)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${onlineRoom ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`}><UsersRound size={14} /> {onlineRoom ? 'Online' : 'Play online'}</button><button onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10"><Settings2 size={14} /> Settings</button><button onClick={restartMatch} className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10 sm:inline-flex"><RotateCcw size={14} /> Reset</button></div>
+          <div className="flex items-center gap-2"><button onClick={() => { setTeacherModeEnabled((enabled) => !enabled); setTeacherModeOpen(true) }} disabled={Boolean(classroom)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${teacherModeEnabled ? 'border-violet-300/40 bg-violet-400/15 text-violet-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'} disabled:cursor-not-allowed disabled:opacity-55`} role="switch" aria-checked={teacherModeEnabled}><GraduationCap size={14} /> {classroom ? 'Teacher deck' : 'Teacher mode'} {!classroom && <span className={`relative h-4 w-7 rounded-full ${teacherModeEnabled ? 'bg-violet-300' : 'bg-slate-600'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition ${teacherModeEnabled ? 'left-3.5' : 'left-0.5'}`} /></span>}</button><button onClick={() => setOnlineLobbyOpen(true)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${onlineRoom ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`}><UsersRound size={14} /> {onlineRoom ? 'Online' : 'Play online'}</button><button onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10"><Settings2 size={14} /> Settings</button><button onClick={restartMatch} className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10 sm:inline-flex"><RotateCcw size={14} /> Reset</button></div>
         </header>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)_240px] lg:items-center">
@@ -621,6 +845,7 @@ export default function App() {
           <aside className="order-3 rounded-2xl border border-white/10 bg-slate-900/55 p-4">
             <div className="flex items-center gap-2"><Flag size={16} className="text-indigo-300" /><h2 className="text-sm font-black text-white">Question deck</h2></div>
             <p className="mt-1 text-[11px] text-slate-500">{deckTitle}</p>
+            {classroom && <div className="mt-3 rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-[11px] leading-4 text-violet-100"><span className="font-black">Teacher Mode</span> · {classroom.deck_protected ? 'This study room is locked to the attached deck.' : 'Choose a deck for this private study room.'}</div>}
             {!questionBank.length && <p className="mt-3 rounded-xl border border-indigo-300/20 bg-indigo-400/10 px-3 py-2 text-[11px] leading-4 text-indigo-200">Paste a public Google Slides link below to load your question tiles.</p>}
             <div className="mt-3 grid grid-cols-4 gap-2">
               {questionBank.map((item, index) => {
@@ -632,21 +857,23 @@ export default function App() {
               })}
             </div>
             <p className="mt-3 text-[11px] leading-4 text-slate-400">Pick a tile to show that slide as the current question. Completed tiles grey out automatically.</p>
-            <div className="mt-5 border-t border-white/10 pt-4">
+            {(!classroom || !classroom.deck_protected) && <div className="mt-5 border-t border-white/10 pt-4">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-200"><TimerReset size={15} className="text-indigo-300" /> Slide source</div>
               <input value={deckUrl} onChange={(event) => setDeckUrl(event.target.value)} placeholder="Paste public Google Slides link" className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-600 focus:border-indigo-300" />
               <button onClick={importDeck} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-400 px-3 py-2 text-xs font-black text-indigo-950 transition hover:bg-indigo-300"><Sparkles size={14} /> Import deck</button>
               {deckStatus && <p className={`mt-2 text-[10px] ${deckStatus.includes('ready') ? 'text-emerald-300' : 'text-slate-400'}`}>{deckStatus}</p>}
-            </div>
+            </div>}
           </aside>
         </div>
       </div>
 
-      {phase === 'intro' && <div className="dialog-backdrop fixed inset-0 z-40 grid place-items-center bg-[#070b1b]/75 p-4 backdrop-blur-md"><section className="dialog-surface animate-pop-in w-full max-w-lg overflow-hidden rounded-[30px] border border-white/15 bg-slate-900 p-7 text-center shadow-2xl sm:p-9"><div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-indigo-400 text-indigo-950 shadow-glow"><Crown size={31} /></div><p className="mt-5 text-[10px] font-black uppercase tracking-[.22em] text-indigo-300">The quiz-powered classic</p><h2 className="mt-2 text-3xl font-black tracking-tight text-white">Ready to link four?</h2><p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-400">Correct answers unlock a move. Get it wrong and the opposing team can steal your chance.</p><div className="mt-6 grid grid-cols-2 gap-3">{gameTeams.map((item) => <TeamCard key={item.id} team={item} active={false} compact />)}</div><button onClick={() => setOnlineLobbyOpen(true)} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-5 py-3 text-sm font-black text-emerald-200 transition hover:bg-emerald-400/20"><UsersRound size={17} /> Play with another student</button><button onClick={() => setSettingsOpen(true)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-300/30 bg-indigo-400/10 px-5 py-3 text-sm font-black text-indigo-200 transition hover:bg-indigo-400/20"><Settings2 size={17} /> Alter settings</button><button onClick={startGame} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 px-5 py-3.5 text-sm font-black text-indigo-950 transition hover:bg-indigo-300">Start the match <ArrowRight size={17} /></button></section></div>}
-      {phase === 'question' && question && <QuestionModal key={`${questionIndex}-${activeTeam}-${isSteal}`} team={team} question={question} seconds={seconds} total={timerDuration} timerEnabled={timerEnabled} isSteal={isSteal} canAnswer={isMyTurn} onAnswer={handleAnswer} />}
-      {phase === 'complete' && <ResultModal result={winner} team={gameTeams[winner?.teamIndex ?? 0]} onRestart={restartMatch} onContinue={startGame} />}
-      {settingsOpen && <SettingsModal theme={theme} onThemeChange={setTheme} timerEnabled={timerEnabled} onTimerEnabledChange={setTimerEnabled} timerDuration={timerDuration} onTimerDurationChange={setTimerDuration} winRules={winRules} onRulesChange={setWinRules} teamNames={teamNames} onTeamNamesChange={setTeamNames} onClose={() => setSettingsOpen(false)} />}
-      {onlineLobbyOpen && <OnlineLobbyModal room={onlineRoom} roomCode={onlineRoomCode} onRoomCodeChange={setOnlineRoomCode} status={onlineStatus} error={onlineError} inviteUrl={onlineRoom ? `${window.location.origin}${window.location.pathname}?join=${onlineRoom.room_code}` : window.location.href} onRandomMatch={() => connectOnline('', 'random')} onCreateRoom={() => connectOnline('', 'create')} onCodeMatch={() => connectOnline(onlineRoomCode, 'code')} onCopyCode={copyRoomCode} onCopyInvite={copyInviteLink} onStart={() => { startGame(); setOnlineLobbyOpen(false) }} onClose={() => setOnlineLobbyOpen(false)} />}
+      {phase === 'intro' && <div className="dialog-backdrop fixed inset-0 z-40 grid place-items-center bg-[#070b1b]/75 p-4 backdrop-blur-md"><section className="dialog-surface animate-pop-in flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[30px] border border-white/15 bg-slate-900 text-center shadow-2xl"><div className="min-h-0 overflow-y-auto p-6 sm:p-8"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-indigo-400 text-indigo-950 shadow-glow"><Crown size={28} /></div><p className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-indigo-300">The quiz-powered classic</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Ready to link four?</h2><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-400">Correct answers unlock a move. Get it wrong and the opposing team can steal your chance.</p><div className="mt-5 grid grid-cols-2 gap-3">{gameTeams.map((item) => <TeamCard key={item.id} team={item} active={false} compact />)}</div>{!classroom && <><div className="mt-5 border-t border-white/10 pt-4 text-left"><div className="flex items-center gap-2 text-xs font-bold text-slate-200"><TimerReset size={15} className="text-indigo-300" /> Google Slides deck</div><div className="mt-2 flex gap-2"><input value={deckUrl} onChange={(event) => setDeckUrl(event.target.value)} placeholder="Paste public Google Slides link" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2.5 text-xs text-white outline-none placeholder:text-slate-600 focus:border-indigo-300" /><button onClick={importDeck} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-indigo-400 px-3 py-2 text-xs font-black text-indigo-950 transition hover:bg-indigo-300"><Sparkles size={14} /> Import</button></div>{deckStatus && <p className={`mt-2 text-[10px] ${deckStatus.includes('ready') ? 'text-emerald-300' : 'text-slate-400'}`}>{deckStatus}</p>}</div><div className="mt-4 flex items-center justify-between rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2.5 text-left"><div><p className="text-xs font-black text-violet-100">Teacher Mode</p><p className="mt-0.5 text-[10px] text-slate-400">Share this deck with students.</p></div><button onClick={() => setTeacherModeEnabled((enabled) => !enabled)} className={`relative h-7 w-12 rounded-full transition ${teacherModeEnabled ? 'bg-violet-400' : 'bg-slate-700'}`} role="switch" aria-checked={teacherModeEnabled} aria-label="Toggle Teacher Mode"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${teacherModeEnabled ? 'left-6' : 'left-1'}`} /></button></div>{teacherModeEnabled && <button onClick={() => setTeacherModeOpen(true)} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-300/30 bg-violet-400/10 px-4 py-2.5 text-xs font-black text-violet-100 transition hover:bg-violet-400/20"><GraduationCap size={16} /> Set up student link</button>}</>}<button onClick={() => setOnlineLobbyOpen(true)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-5 py-3 text-sm font-black text-emerald-200 transition hover:bg-emerald-400/20"><UsersRound size={17} /> Play with another student</button><button onClick={() => setSettingsOpen(true)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-300/30 bg-indigo-400/10 px-5 py-3 text-sm font-black text-indigo-200 transition hover:bg-indigo-400/20"><Settings2 size={17} /> Alter settings</button><button onClick={startGame} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 px-5 py-3.5 text-sm font-black text-indigo-950 transition hover:bg-indigo-300">Start the match <ArrowRight size={17} /></button></div></section></div>}
+      {phase === 'intro' && !classroom && <button onClick={startClassicGame} className="fixed right-4 top-4 z-50 inline-flex items-center gap-2 rounded-xl border border-amber-300/40 bg-amber-300 px-3 py-2 text-xs font-black text-amber-950 shadow-lg transition hover:bg-amber-200 sm:right-6 sm:top-6"><Gamepad2 size={15} /> Just play Connect 4</button>}
+      {phase === 'question' && question && <QuestionModal key={`${questionIndex}-${activeTeam}-${isSteal}`} team={team} question={question} seconds={seconds} total={timerDuration} timerEnabled={timerEnabled} isSteal={isSteal} canAnswer={isMyTurn} onAnswerPending={() => setAnswerPending(true)} onAnswer={(correct, timedOut) => { setAnswerPending(false); handleAnswer(correct, timedOut) }} />}
+      {phase === 'complete' && <ResultModal result={winner} team={gameTeams[winner?.teamIndex ?? 0]} onRestart={restartMatch} onContinue={classicMode ? startClassicGame : startGame} />}
+      {settingsOpen && <SettingsModal theme={theme} onThemeChange={setTheme} timerEnabled={timerEnabled} onTimerEnabledChange={setTimerEnabled} timerDuration={timerDuration} onTimerDurationChange={setTimerDuration} winRules={winRules} onRulesChange={setWinRules} teamNames={teamNames} onTeamNamesChange={setTeamNames} locked={Boolean(classroom?.settings_locked)} onClose={() => setSettingsOpen(false)} />}
+      {teacherModeOpen && <TeacherModeModal deckReady={questionBank.length > 0} deckTitle={deckTitle} pairing={teacherPairing} onPairingChange={(pairing) => { setTeacherPairing(pairing); setTeacherShareUrl('') }} protectDeck={protectTeacherDeck} onProtectDeckChange={(protectedDeck) => { setProtectTeacherDeck(protectedDeck); setTeacherShareUrl('') }} lockSettings={lockStudentSettings} onLockSettingsChange={(locked) => { setLockStudentSettings(locked); setTeacherShareUrl('') }} shareUrl={teacherShareUrl} status={teacherStatus} error={teacherError} onCreateLink={createStudentLink} onCopyLink={copyStudentLink} onClose={() => setTeacherModeOpen(false)} />}
+      {onlineLobbyOpen && <OnlineLobbyModal room={onlineRoom} roomCode={onlineRoomCode} onRoomCodeChange={setOnlineRoomCode} status={onlineStatus} error={onlineError} inviteUrl={onlineRoom ? `${window.location.origin}${window.location.pathname}?${classroom ? `class=${encodeURIComponent(classroom.class_code)}&` : ''}join=${onlineRoom.room_code}` : window.location.href} onRandomMatch={() => connectOnline('', 'random')} onCreateRoom={() => connectOnline('', 'create')} onCodeMatch={() => connectOnline(onlineRoomCode, 'code')} onCopyCode={copyRoomCode} onCopyInvite={copyInviteLink} onStart={() => { startGame(); setOnlineLobbyOpen(false) }} onClose={() => setOnlineLobbyOpen(false)} classroom={classroom} matchMode={onlineMatchMode} />}
       {isAppLoading && <AppPreloader />}
     </main>
   )

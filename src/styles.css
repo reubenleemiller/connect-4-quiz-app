@@ -40,9 +40,17 @@
   .theme-light .text-slate-400,
   .theme-light .text-slate-500 { color: #536684; }
   .theme-light .text-slate-600 { color: #40516e; }
+  /* Keep supporting copy readable on the main screen in either theme. */
+  .aurora-bg .text-slate-300 { color: #e8eef9; }
+  .aurora-bg .text-slate-400 { color: #d1dceb; }
+  .aurora-bg .text-slate-500 { color: #bcc9dc; }
+  .theme-light.aurora-bg .text-slate-300 { color: #1e293b; }
+  .theme-light.aurora-bg .text-slate-400 { color: #334155; }
+  .theme-light.aurora-bg .text-slate-500 { color: #475569; }
   .theme-light .text-indigo-100,
   .theme-light .text-indigo-200,
   .theme-light .text-indigo-300 { color: #344cb3; }
+  .theme-light .text-violet-100 { color: #2e1065; }
   .theme-light .text-amber-200 { color: #955300; }
   .theme-light .text-emerald-200,
   .theme-light .text-emerald-300 { color: #08755b; }
@@ -71,6 +79,20 @@
   .theme-light .dialog-backdrop { background: rgba(224, 233, 250, .72); }
   .theme-light .dialog-surface,
   .theme-light .settings-surface { background: #ffffff; border-color: rgba(74, 92, 139, .22); box-shadow: 0 24px 70px rgba(40, 61, 111, .2); }
+  .dialog-surface .text-slate-300,
+  .settings-surface .text-slate-300 { color: #f1f5f9; }
+  .dialog-surface .text-slate-400,
+  .dialog-surface .text-slate-500,
+  .settings-surface .text-slate-400,
+  .settings-surface .text-slate-500 { color: #e2e8f0; }
+  .dialog-surface .text-violet-100 { color: #f5f3ff; }
+  .theme-light .dialog-surface .text-slate-300,
+  .theme-light .settings-surface .text-slate-300 { color: #1e293b; }
+  .theme-light .dialog-surface .text-slate-400,
+  .theme-light .dialog-surface .text-slate-500,
+  .theme-light .settings-surface .text-slate-400,
+  .theme-light .settings-surface .text-slate-500 { color: #334155; }
+  .theme-light .dialog-surface .text-violet-100 { color: #2e1065; }
   .theme-light .dialog-surface .bg-black\/20 { background-color: rgba(36, 61, 116, .08); }
   .theme-light .dialog-surface .bg-\[\#070b1b\] { background-color: #e7efff; }
   .answer-key-mask { background: #111b50; }
