@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "api/slides.js": { "maxDuration": 10 }
+  }
+}

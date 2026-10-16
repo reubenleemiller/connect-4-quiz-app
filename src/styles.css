@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply box-border; }
+  body { @apply m-0 min-w-[320px] bg-[#f5f7fe] font-sans text-slate-800 antialiased; }
+  button { font: inherit; }
+}
+
+@layer utilities {
+  .aurora-bg {
+    background:
+      radial-gradient(circle at 15% 12%, rgba(99, 102, 241, .2), transparent 25rem),
+      radial-gradient(circle at 92% 18%, rgba(20, 184, 166, .12), transparent 22rem),
+      radial-gradient(circle at 43% 108%, rgba(244, 63, 94, .11), transparent 29rem),
+      #0c1023;
+  }
+  .board-grid {
+    background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+  .theme-light.aurora-bg {
+    background:
+      radial-gradient(circle at 15% 12%, rgba(129, 140, 248, .18), transparent 25rem),
+      radial-gradient(circle at 92% 18%, rgba(45, 212, 191, .12), transparent 22rem),
+      radial-gradient(circle at 43% 108%, rgba(251, 191, 36, .12), transparent 29rem),
+      #f5f7fe;
+    color: #17223b;
+  }
+  .theme-light.board-grid {
+    background-image: linear-gradient(rgba(67, 83, 130, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(67, 83, 130, .07) 1px, transparent 1px);
+  }
+  .theme-light [class*="bg-slate-"] { background-color: rgba(255, 255, 255, .92); }
+  .theme-light [class*="bg-white/"]:not(.game-disc) { background-color: rgba(46, 66, 113, .06); }
+  .theme-light .text-white,
+  .theme-light .text-slate-100,
+  .theme-light .text-slate-200 { color: #17223b; }
+  .theme-light .text-slate-300 { color: #354560; }
+  .theme-light .text-slate-400,
+  .theme-light .text-slate-500 { color: #536684; }
+  .theme-light .text-slate-600 { color: #40516e; }
+  .theme-light .text-indigo-100,
+  .theme-light .text-indigo-200,
+  .theme-light .text-indigo-300 { color: #344cb3; }
+  .theme-light .text-amber-200 { color: #955300; }
+  .theme-light .text-emerald-200,
+  .theme-light .text-emerald-300 { color: #08755b; }
+  .theme-light .text-rose-300 { color: #c21c48; }
+  .theme-light .hover\:text-white:hover { color: #17223b; }
+  .theme-light [class*="border-white/"] { border-color: rgba(74, 92, 139, .2); }
+  .theme-light [class*="placeholder:text-slate-600"]::placeholder { color: #64748b; }
+  .theme-light .bg-slate-700 { background-color: #cbd5e1; }
+  .theme-light .game-board {
+    background: linear-gradient(145deg, #78a0eb, #557bd0);
+    border-color: rgba(47, 86, 166, .35);
+    box-shadow: 0 22px 55px rgba(51, 85, 146, .25);
+  }
+  .theme-light .game-grid { background: #4166b3; }
+  .theme-light .game-slot {
+    background: #f8faff;
+    box-shadow: inset 0 5px 8px rgba(35, 65, 125, .25), 0 1px 1px rgba(255,255,255,.72);
+  }
+  .theme-light .game-slot:hover { background: #e1eaff; }
+  .theme-light .game-disc {
+    border: 2px solid rgba(255, 255, 255, .55);
+    box-shadow: inset 0 -7px 10px rgba(0, 0, 0, .2), inset 0 5px 9px rgba(255, 255, 255, .27), 0 3px 7px rgba(20, 44, 98, .28);
+  }
+  .theme-light .game-disc.bg-rose-500 { background-color: #f43f5e !important; }
+  .theme-light .game-disc.bg-amber-400 { background-color: #fbbf24 !important; }
+  .theme-light .dialog-backdrop { background: rgba(224, 233, 250, .72); }
+  .theme-light .dialog-surface,
+  .theme-light .settings-surface { background: #ffffff; border-color: rgba(74, 92, 139, .22); box-shadow: 0 24px 70px rgba(40, 61, 111, .2); }
+  .theme-light .dialog-surface .bg-black\/20 { background-color: rgba(36, 61, 116, .08); }
+  .theme-light .dialog-surface .bg-\[\#070b1b\] { background-color: #e7efff; }
+  .answer-key-mask { background: #111b50; }
+  .theme-light .answer-key-mask { background: #e7efff; border-color: rgba(74, 92, 139, .2); }
+
+  button[data-press-loading='true'] {
+    position: relative !important;
+    color: transparent !important;
+    pointer-events: none;
+  }
+  button[data-press-loading='true'] > * { visibility: hidden; }
+  button[data-press-loading='true']::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.95rem;
+    height: 0.95rem;
+    margin: -0.475rem;
+    border: 2px solid rgba(255, 255, 255, .86);
+    border-top-color: transparent;
+    border-radius: 9999px;
+    animation: spinner .65s linear infinite;
+  }
+  .theme-light button[data-press-loading='true']::after { border-color: #344cb3; border-top-color: transparent; }
+  @keyframes spinner { to { transform: rotate(360deg); } }
+}
