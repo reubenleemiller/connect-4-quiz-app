@@ -274,9 +274,9 @@ function SettingsModal({ theme, onThemeChange, timerEnabled, onTimerEnabledChang
           </div>
 
           <div className="border-t border-white/10 pt-5">
-            <div className="flex items-center justify-between gap-4"><div><p className="font-bold text-white">Question timer</p><p className="mt-0.5 text-xs text-slate-400">The same limit applies to a steal attempt.</p></div><button onClick={() => onTimerEnabledChange(!timerEnabled)} className={`relative h-7 w-12 rounded-full transition ${timerEnabled ? 'bg-indigo-400' : 'bg-slate-700'}`} aria-pressed={timerEnabled} aria-label="Toggle question timer"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${timerEnabled ? 'left-6' : 'left-1'}`} /></button></div>
+            <div className="flex items-center justify-between gap-4"><div><p className="font-bold text-white">Turn timer</p><p className="mt-0.5 text-xs text-slate-400">Applies to quiz questions and classic turns.</p></div><button onClick={() => onTimerEnabledChange(!timerEnabled)} className={`relative h-7 w-12 rounded-full transition ${timerEnabled ? 'bg-indigo-400' : 'bg-slate-700'}`} aria-pressed={timerEnabled} aria-label="Toggle turn timer"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${timerEnabled ? 'left-6' : 'left-1'}`} /></button></div>
             <div className={`mt-4 flex items-center gap-3 ${timerEnabled ? '' : 'opacity-40'}`}><input type="number" min="1" step="1" value={timerDuration} disabled={!timerEnabled} onChange={(event) => onTimerDurationChange(Math.max(1, Number(event.target.value) || 1))} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm font-black text-white outline-none focus:border-indigo-300 disabled:cursor-not-allowed" /><span className="rounded-lg bg-white/[.06] px-3 py-2.5 text-xs font-black text-slate-300">seconds</span></div>
-            <p className="mt-2 text-[10px] text-slate-500">Displays as {formatTime(timerDuration)}. Timer changes start with the next question.</p>
+            <p className="mt-2 text-[10px] text-slate-500">Displays as {formatTime(timerDuration)}. Timer changes start with the next turn.</p>
           </div>
 
           <div className="border-t border-white/10 pt-5">
@@ -627,6 +627,7 @@ export default function App() {
     setActiveTeam(0)
     setQuestionIndex(0)
     setUsedQuestions([])
+    setSeconds(timerDuration)
     setCanDrop(true)
     setWinner(null)
     setLastDrop(null)
@@ -696,6 +697,30 @@ export default function App() {
     }, 1000)
     return () => window.clearInterval(timerRef.current)
   }, [phase, isSteal, questionIndex, timerEnabled, isMyTurn, answerPending])
+
+  useEffect(() => {
+    if (phase !== 'board' || !classicMode || !timerEnabled || !canDrop || !isMyTurn || winner) return undefined
+    timerRef.current = window.setInterval(() => {
+      setSeconds((current) => {
+        if (current <= 1) {
+          window.clearInterval(timerRef.current)
+          window.setTimeout(() => {
+            const nextTeam = activeTeam === 0 ? 1 : 0
+            const currentTeamName = teamNames[activeTeam]?.trim() || `Team ${activeTeam + 1}`
+            const nextTeamName = teamNames[nextTeam]?.trim() || `Team ${nextTeam + 1}`
+            markLocalStateChange()
+            setActiveTeam(nextTeam)
+            setSeconds(timerDuration)
+            setCanDrop(true)
+            setMessage(`${currentTeamName} ran out of time. ${nextTeamName}, drop your disc.`)
+          }, 0)
+          return 0
+        }
+        return current - 1
+      })
+    }, 1000)
+    return () => window.clearInterval(timerRef.current)
+  }, [phase, classicMode, timerEnabled, canDrop, isMyTurn, winner, activeTeam, timerDuration, teamNames])
 
   useEffect(() => {
     if (!onlineRoom?.room_id) return undefined
@@ -794,6 +819,7 @@ export default function App() {
     setActiveTeam(nextTeam)
     setPhase('board')
     if (classicMode) {
+      setSeconds(timerDuration)
       setCanDrop(true)
       setMessage(`${team.name} placed a disc. ${gameTeams[nextTeam].name}, drop your disc.`)
       return
@@ -813,7 +839,7 @@ export default function App() {
             <div><h1 className="text-xl font-black tracking-tight text-white">QUIZ<span className="text-indigo-300">FOUR</span></h1><p className="text-[9px] font-bold uppercase tracking-[.22em] text-slate-500">Think fast. Link four.</p></div>
           </div>
           <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
-            <button onClick={() => { setTeacherModeEnabled((enabled) => !enabled); setTeacherModeOpen(true) }} disabled={Boolean(classroom)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${teacherModeEnabled ? 'border-violet-300/40 bg-violet-400/15 text-violet-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'} disabled:cursor-not-allowed disabled:opacity-55`} role="switch" aria-checked={teacherModeEnabled}><GraduationCap size={14} /> {classroom ? 'Teacher deck' : <><span className="sm:hidden">Teacher</span><span className="hidden sm:inline">Teacher mode</span></>} {!classroom && <span className={`relative h-4 w-7 rounded-full ${teacherModeEnabled ? 'bg-violet-300' : 'bg-slate-600'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition ${teacherModeEnabled ? 'left-3.5' : 'left-0.5'}`} /></span>}</button>
+            <button onClick={() => { if (!teacherModeEnabled) setTeacherModeOpen(true); setTeacherModeEnabled((enabled) => !enabled) }} disabled={Boolean(classroom)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${teacherModeEnabled ? 'border-violet-300/40 bg-violet-400/15 text-violet-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'} disabled:cursor-not-allowed disabled:opacity-55`} role="switch" aria-checked={teacherModeEnabled}><GraduationCap size={14} /> {classroom ? 'Teacher deck' : <><span className="sm:hidden">Teacher</span><span className="hidden sm:inline">Teacher mode</span></>} {!classroom && <span className={`relative h-4 w-7 rounded-full ${teacherModeEnabled ? 'bg-violet-300' : 'bg-slate-600'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition ${teacherModeEnabled ? 'left-3.5' : 'left-0.5'}`} /></span>}</button>
             <button onClick={() => setOnlineLobbyOpen(true)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${onlineRoom ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`}><UsersRound size={14} /> {onlineRoom ? 'Online' : <><span className="sm:hidden">Online</span><span className="hidden sm:inline">Play online</span></>}</button>
             <button onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10" aria-label="Open settings"><Settings2 size={14} /> <span className="hidden sm:inline">Settings</span></button>
             <button onClick={restartMatch} className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10 sm:inline-flex"><RotateCcw size={14} /> Reset</button>
@@ -833,7 +859,7 @@ export default function App() {
                 </div>
                 <div><p className="text-[10px] font-black uppercase tracking-[.16em] text-indigo-300">{canDrop ? 'Move unlocked' : 'Quiz control'}</p><p className="text-sm font-semibold text-slate-200">{message}</p></div>
               </div>
-              <div className="flex items-center gap-2 rounded-full bg-white/[.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">{timerEnabled ? <Clock3 size={13} className="text-indigo-300" /> : <Sun size={13} className="text-amber-300" />}{timerEnabled ? `${formatTime(timerDuration)} timer` : 'Untimed match'}</div>
+              <div className="flex items-center gap-2 rounded-full bg-white/[.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">{timerEnabled ? <Clock3 size={13} className="text-indigo-300" /> : <Sun size={13} className="text-amber-300" />}{timerEnabled ? (classicMode && canDrop && phase === 'board' ? `${formatTime(seconds)} left` : `${formatTime(timerDuration)} timer`) : 'Untimed match'}</div>
             </div>
 
             <div className="game-board relative rounded-[26px] border border-indigo-300/20 bg-[#182563] p-2 shadow-board sm:p-3">
