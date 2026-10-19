@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Copy, Crown, Flag,
   Gamepad2, GraduationCap, Link, Moon, RotateCcw, Settings2, ShieldAlert, Sparkles, Sun,
   MonitorUp, TimerReset, Trophy, UsersRound, Wifi, X,
 } from 'lucide-react'
 import { createTeacherClassroom, getTeacherClassroom, isSupabaseConfigured, joinMatch, joinTeacherMatch, saveMatchState, watchMatch } from './lib/multiplayer'
-import { QRCodeSVG } from 'qrcode.react'
+
+const QRCodeSVG = lazy(() => import('qrcode.react').then(({ QRCodeSVG: Component }) => ({ default: Component })))
 
 const ROWS = 6
 const COLS = 7
@@ -224,7 +225,7 @@ function OnlineLobbyModal({ room, roomCode, onRoomCodeChange, status, error, inv
             <div className="rounded-2xl border border-indigo-300/25 bg-indigo-400/10 p-5 text-center">
               <Wifi className="mx-auto text-indigo-300" size={24} />
               <p className="mt-3 text-sm font-bold text-white">{room.room_status === 'waiting' ? 'Invite a classmate to this private room' : 'Opponent connected — ready to play!'}</p>
-              {room.room_status === 'waiting' && <><div className="mx-auto mt-4 w-fit rounded-2xl bg-white p-3 shadow-sm"><QRCodeSVG value={inviteUrl} size={136} level="M" includeMargin /></div><p className="mt-3 text-xs text-slate-400">They can scan this QR code, use the invite link, or enter the room code.</p><button onClick={onCopyInvite} className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-indigo-200 hover:text-white"><Copy size={14} /> Copy invite link</button></>}
+              {room.room_status === 'waiting' && <><div className="mx-auto mt-4 grid h-40 w-40 place-items-center rounded-2xl bg-white p-3 shadow-sm"><Suspense fallback={<TinySpinner className="text-indigo-500" />}><QRCodeSVG value={inviteUrl} size={136} level="M" includeMargin /></Suspense></div><p className="mt-3 text-xs text-slate-400">They can scan this QR code, use the invite link, or enter the room code.</p><button onClick={onCopyInvite} className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-indigo-200 hover:text-white"><Copy size={14} /> Copy invite link</button></>}
               <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Six-character room code</p><div className="mt-2 flex items-center justify-center gap-2"><code className="rounded-xl border border-indigo-300/30 bg-slate-950/50 px-4 py-2 text-xl font-black tracking-[.24em] text-indigo-200">{room.room_code}</code><button onClick={onCopyCode} className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-300/30 px-3 text-xs font-black text-indigo-200 hover:bg-indigo-400/10" aria-label="Copy room code"><Copy size={16} /> Copy code</button></div></div>
               {room.room_status === 'active' && matchMode !== 'random' && <button onClick={onStart} disabled={room.seat !== 0} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50">{room.seat === 0 ? 'Start game' : 'Waiting for host to start'}</button>}
             </div>
@@ -375,8 +376,8 @@ export default function App() {
   const syncVersionRef = useRef(0)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setIsAppLoading(false), 1100)
-    return () => window.clearTimeout(timer)
+    const frame = window.requestAnimationFrame(() => setIsAppLoading(false))
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   const showButtonSpinner = (event) => {
@@ -438,7 +439,7 @@ export default function App() {
     setActiveTeam(state.activeTeam ?? 0)
     setPhase(state.phase ?? 'intro')
     setQuestionIndex(state.questionIndex ?? 0)
-    setQuestionBank(state.questionBank?.length ? state.questionBank : [])
+    if (Array.isArray(state.questionBank)) setQuestionBank(state.questionBank)
     setUsedQuestions(state.usedQuestions || [])
     setTeamNames(state.teamNames?.length === 2 ? state.teamNames : teams.map((item) => item.name))
     setTimerEnabled(state.timerEnabled ?? true)
@@ -670,6 +671,7 @@ export default function App() {
       if (!response.ok) throw new Error(data.error || 'Could not read that deck.')
       if (!data.slides?.length) throw new Error('No usable question slides were found.')
       setQuestionBank(data.slides)
+      markLocalStateChange()
       setQuestionIndex(0)
       setUsedQuestions([])
       setDeckTitle(data.title || 'Google Slides quiz')
@@ -726,6 +728,12 @@ export default function App() {
   }, [phase, classicMode, timerEnabled, canDrop, isMyTurn, winner, activeTeam, timerDuration, teamNames])
 
   useEffect(() => {
+    const timerIsRunning = phase === 'question' || (phase === 'board' && classicMode && canDrop)
+    if (!onlineRoom?.room_id || !isMyTurn || !timerEnabled || !timerIsRunning || seconds <= 0 || seconds % 5 !== 0) return
+    markLocalStateChange()
+  }, [onlineRoom?.room_id, isMyTurn, timerEnabled, phase, classicMode, canDrop, seconds])
+
+  useEffect(() => {
     if (!onlineRoom?.room_id) return undefined
     return watchMatch(onlineRoom.room_id, (room) => {
       setOnlineRoom((current) => current ? { ...current, room_status: room.status } : current)
@@ -749,20 +757,21 @@ export default function App() {
   }, [onlineMatchMode, onlineRoom?.room_id, onlineRoom?.room_status, onlineRoom?.seat])
 
   useEffect(() => {
-    if (!onlineRoom?.room_id || onlineRoom.room_status !== 'active' || answerPending || (!isMyTurn && !pendingLocalSyncRef.current)) return undefined
+    if (!onlineRoom?.room_id || onlineRoom.room_status !== 'active' || answerPending) return undefined
     if (applyingRemoteState.current) {
       applyingRemoteState.current = false
-      pendingLocalSyncRef.current = false
-      return undefined
     }
+    if (!pendingLocalSyncRef.current) return undefined
     const timer = window.setTimeout(() => {
       const syncVersion = syncVersionRef.current
       saveMatchState(onlineRoom.room_id, snapshotGame())
         .then(() => {
-          if (syncVersionRef.current === syncVersion) pendingLocalSyncRef.current = false
+          if (syncVersionRef.current === syncVersion) {
+            pendingLocalSyncRef.current = false
+          }
         })
         .catch((error) => setOnlineError(error.message || 'Could not sync the game.'))
-    }, 150)
+    }, 75)
     return () => window.clearTimeout(timer)
   }, [board, activeTeam, phase, questionIndex, questionBank, usedQuestions, teamNames, timerEnabled, timerDuration, seconds, isSteal, canDrop, lastDrop, winner, score, message, winRules, onlineRoom?.room_id, onlineRoom?.room_status, isMyTurn, answerPending])
 

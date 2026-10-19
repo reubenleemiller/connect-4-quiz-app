@@ -103,7 +103,11 @@
      shared game state. */
   @media (min-width: 1024px) {
     .smartboard-mode .smartboard-layout {
-      grid-template-columns: minmax(0, 1fr) 300px;
+      /* Keep the board and the question picker in view together. The picker
+         needs considerably more room for its touch targets, while the board
+         is sized from the available viewport height instead of forcing a
+         fixed 5rem-tall slot that can run below a shorter Smartboard. */
+      grid-template-columns: minmax(0, 1fr) clamp(28rem, 36vw, 38rem);
       grid-template-areas:
         "teams deck"
         "board deck";
@@ -113,11 +117,17 @@
       grid-area: teams;
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .smartboard-mode .smartboard-layout > section { grid-area: board; }
-    .smartboard-mode .smartboard-layout > aside:last-child { grid-area: deck; }
-    .smartboard-mode .game-board { padding: 1rem; border-radius: 2rem; }
+    .smartboard-mode .smartboard-layout > section { grid-area: board; min-width: 0; }
+    .smartboard-mode .smartboard-layout > aside:last-child { grid-area: deck; min-width: 0; }
+    .smartboard-mode .game-board {
+      width: min(100%, calc((100dvh - 18rem) * 1.1667));
+      max-width: 100%;
+      margin-inline: auto;
+      padding: 1rem;
+      border-radius: 2rem;
+    }
     .smartboard-mode .game-grid { gap: .7rem; padding: .7rem; padding-top: 3.5rem; }
-    .smartboard-mode .game-slot { min-height: 5rem; }
+    .smartboard-mode .game-slot { min-height: 0; }
     .smartboard-mode .game-board > div:first-child { gap: .7rem; top: .7rem; }
     .smartboard-mode .game-board > div:first-child button { height: 2.25rem; }
   }
