@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, Check, ChevronDown, CircleHelp, Clock3, Copy, Crown, Flag,
   Gamepad2, GraduationCap, Link, Moon, RotateCcw, Settings2, ShieldAlert, Sparkles, Sun,
-  TimerReset, Trophy, UsersRound, Wifi, X,
+  MonitorUp, TimerReset, Trophy, UsersRound, Wifi, X,
 } from 'lucide-react'
 import { createTeacherClassroom, getTeacherClassroom, isSupabaseConfigured, joinMatch, joinTeacherMatch, saveMatchState, watchMatch } from './lib/multiplayer'
 import { QRCodeSVG } from 'qrcode.react'
@@ -102,7 +102,7 @@ function TimerDial({ seconds, total }) {
   )
 }
 
-function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, canAnswer, onAnswerPending, onAnswer }) {
+function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, canAnswer, smartboardMode, onAnswerPending, onAnswer }) {
   const [selected, setSelected] = useState(null)
   const answerLockedRef = useRef(false)
   const answerTimerRef = useRef(null)
@@ -120,7 +120,7 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
 
   return (
     <div className="dialog-backdrop fixed inset-0 z-40 grid place-items-center bg-[#070b1b]/80 p-4 backdrop-blur-md">
-      <section className="dialog-surface animate-pop-in relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/15 bg-slate-900 shadow-2xl">
+      <section className={`dialog-surface animate-pop-in relative w-full overflow-hidden rounded-[28px] border border-white/15 bg-slate-900 shadow-2xl ${smartboardMode ? 'max-w-6xl' : 'max-w-2xl'}`}>
         <div className={`absolute inset-x-0 top-0 h-1 ${isSteal ? 'bg-amber-400' : 'bg-indigo-400'}`} />
         <div className="p-5 sm:p-8">
           <div className="flex items-start justify-between gap-4">
@@ -136,7 +136,7 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
           {question.slideUrl && <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
             <div className="flex items-center justify-between px-4 py-2 text-[10px] font-black uppercase tracking-[.16em] text-slate-400"><span>Google Slides · Question {question.number}</span><span className="text-indigo-300">Answer key masked</span></div>
             <div className="relative">
-              <iframe title={`Question ${question.number} from Google Slides`} className="h-48 w-full border-0 sm:h-60" src={question.slideUrl} allowFullScreen />
+              <iframe title={`Question ${question.number} from Google Slides`} className={`w-full border-0 ${smartboardMode ? 'h-[42vh] min-h-72' : 'h-48 sm:h-60'}`} src={question.slideUrl} allowFullScreen />
               <div className="answer-key-mask pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-[17%] items-center justify-center border-t border-white/10 text-[9px] font-black uppercase tracking-[.16em] text-indigo-200">Answer key hidden during play</div>
             </div>
           </div>}
@@ -144,15 +144,15 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
             <p className="mb-2 text-[10px] font-black uppercase tracking-[.17em] text-indigo-300">{question.topic}</p>
             <h2 className="text-xl font-extrabold leading-snug text-white sm:text-2xl">{question.prompt}</h2>
           </div>}
-          <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+          <div className={`mt-4 grid gap-2.5 sm:grid-cols-2 ${smartboardMode ? 'lg:grid-cols-4' : ''}`}>
             {question.options.map((option, index) => {
               const isChosen = selected === index
               const correct = index === question.answer
               let style = 'border-white/10 bg-white/[.035] hover:border-indigo-300/60 hover:bg-indigo-400/10'
               if (locked && isChosen) style = correct ? 'border-emerald-400 bg-emerald-400/15' : 'border-rose-400 bg-rose-400/15'
-              return <button key={option} data-answer-choice="true" onClick={() => pick(index)} disabled={!canAnswer} className={`group flex min-h-14 items-center gap-3 rounded-xl border p-3 text-left transition ${style} ${!canAnswer ? 'cursor-not-allowed opacity-55' : ''}`}>
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/10 text-xs font-black text-slate-300 group-hover:bg-indigo-400 group-hover:text-white">{String.fromCharCode(65 + index)}</span>
-                <span className="font-semibold text-slate-100">{option}</span>
+              return <button key={`${option}-${index}`} data-answer-choice="true" onClick={() => pick(index)} disabled={!canAnswer} className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition ${smartboardMode ? 'min-h-20 text-xl' : 'min-h-14'} ${style} ${!canAnswer ? 'cursor-not-allowed opacity-55' : ''}`}>
+                <span className={`grid shrink-0 place-items-center rounded-lg bg-white/10 font-black text-slate-300 group-hover:bg-indigo-400 group-hover:text-white ${smartboardMode ? 'h-12 w-12 text-lg' : 'h-7 w-7 text-xs'}`}>{question.imageOnly ? option : String.fromCharCode(65 + index)}</span>
+                {!question.imageOnly && <span className="font-semibold text-slate-100">{option}</span>}
                 {locked && isChosen && <span className="ml-auto flex items-center gap-2">{correct ? <Check className="text-emerald-300" size={19} /> : <X className="text-rose-300" size={19} />}<TinySpinner className={correct ? 'text-emerald-300' : 'text-rose-300'} /></span>}
               </button>
             })}
@@ -352,6 +352,7 @@ export default function App() {
   const [teacherError, setTeacherError] = useState('')
   const [classroom, setClassroom] = useState(null)
   const [theme, setTheme] = useState('light')
+  const [smartboardMode, setSmartboardMode] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [timerEnabled, setTimerEnabled] = useState(true)
   const [timerDuration, setTimerDuration] = useState(20)
@@ -831,14 +832,15 @@ export default function App() {
   const winningCells = new Set((winner?.line || []).map(([row, col]) => `${row}-${col}`))
 
   return (
-    <main onClickCapture={showButtonSpinner} className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''}`}>
-      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+    <main onClickCapture={showButtonSpinner} className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''} ${smartboardMode ? 'smartboard-mode' : ''}`}>
+      <div className={`mx-auto px-4 py-5 sm:px-6 lg:px-8 ${smartboardMode ? 'max-w-[100rem]' : 'max-w-7xl'}`}>
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-300 to-violet-500 text-indigo-950 shadow-glow"><Gamepad2 size={23} strokeWidth={2.5} /></div>
             <div><h1 className="text-xl font-black tracking-tight text-white">QUIZ<span className="text-indigo-300">FOUR</span></h1><p className="text-[9px] font-bold uppercase tracking-[.22em] text-slate-500">Think fast. Link four.</p></div>
           </div>
           <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+            <button onClick={() => setSmartboardMode((enabled) => !enabled)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardMode ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`} aria-label="Toggle Smartboard mode" aria-pressed={smartboardMode} title="Use larger controls and a projector-friendly layout"><MonitorUp size={14} /> <span className="hidden md:inline">Smartboard</span></button>
             <button onClick={() => { if (!teacherModeEnabled) setTeacherModeOpen(true); setTeacherModeEnabled((enabled) => !enabled) }} disabled={Boolean(classroom)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${teacherModeEnabled ? 'border-violet-300/40 bg-violet-400/15 text-violet-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'} disabled:cursor-not-allowed disabled:opacity-55`} role="switch" aria-checked={teacherModeEnabled}><GraduationCap size={14} /> {classroom ? 'Teacher deck' : <><span className="sm:hidden">Teacher</span><span className="hidden sm:inline">Teacher mode</span></>} {!classroom && <span className={`relative h-4 w-7 rounded-full ${teacherModeEnabled ? 'bg-violet-300' : 'bg-slate-600'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition ${teacherModeEnabled ? 'left-3.5' : 'left-0.5'}`} /></span>}</button>
             <button onClick={() => setOnlineLobbyOpen(true)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${onlineRoom ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`}><UsersRound size={14} /> {onlineRoom ? 'Online' : <><span className="sm:hidden">Online</span><span className="hidden sm:inline">Play online</span></>}</button>
             <button onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10" aria-label="Open settings"><Settings2 size={14} /> <span className="hidden sm:inline">Settings</span></button>
@@ -846,7 +848,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="mt-6 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)_240px] lg:items-center">
+        <div className={`mt-6 grid gap-5 lg:items-center ${smartboardMode ? 'smartboard-layout' : 'lg:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
           <aside className="order-2 grid grid-cols-2 gap-3 lg:order-1 lg:grid-cols-1">
             {gameTeams.map((item, index) => <TeamCard key={item.id} team={item} score={score[index]} active={activeTeam === index && phase !== 'complete' && phase !== 'intro'} compact />)}
           </aside>
@@ -905,7 +907,7 @@ export default function App() {
 
       {phase === 'intro' && <div className="dialog-backdrop fixed inset-0 z-40 grid place-items-center bg-[#070b1b]/75 p-4 backdrop-blur-md"><section className="dialog-surface animate-pop-in flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[30px] border border-white/15 bg-slate-900 text-center shadow-2xl"><div className="min-h-0 overflow-y-auto p-6 sm:p-8"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-indigo-400 text-indigo-950 shadow-glow"><Crown size={28} /></div><p className="mt-4 text-[10px] font-black uppercase tracking-[.22em] text-indigo-300">The quiz-powered classic</p><h2 className="mt-1 text-3xl font-black tracking-tight text-white">Ready to link four?</h2><p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-400">Correct answers unlock a move. Get it wrong and the opposing team can steal your chance.</p><div className="mt-5 grid grid-cols-2 gap-3">{gameTeams.map((item) => <TeamCard key={item.id} team={item} active={false} compact />)}</div>{!classroom && <><div className="mt-5 border-t border-white/10 pt-4 text-left"><div className="flex items-center gap-2 text-xs font-bold text-slate-200"><TimerReset size={15} className="text-indigo-300" /> Google Slides deck</div><div className="mt-2 flex gap-2"><input value={deckUrl} onChange={(event) => setDeckUrl(event.target.value)} placeholder="Paste public Google Slides link" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2.5 text-xs text-white outline-none placeholder:text-slate-600 focus:border-indigo-300" /><button onClick={importDeck} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-indigo-400 px-3 py-2 text-xs font-black text-indigo-950 transition hover:bg-indigo-300"><Sparkles size={14} /> Import</button></div>{deckStatus && <p className={`mt-2 text-[10px] ${deckStatus.includes('ready') ? 'text-emerald-300' : 'text-slate-400'}`}>{deckStatus}</p>}</div><div className="mt-4 flex items-center justify-between rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2.5 text-left"><div><p className="text-xs font-black text-violet-100">Teacher Mode</p><p className="mt-0.5 text-[10px] text-slate-400">Share this deck with students.</p></div><button onClick={() => setTeacherModeEnabled((enabled) => !enabled)} className={`relative h-7 w-12 rounded-full transition ${teacherModeEnabled ? 'bg-violet-400' : 'bg-slate-700'}`} role="switch" aria-checked={teacherModeEnabled} aria-label="Toggle Teacher Mode"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${teacherModeEnabled ? 'left-6' : 'left-1'}`} /></button></div>{teacherModeEnabled && <button onClick={() => setTeacherModeOpen(true)} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-300/30 bg-violet-400/10 px-4 py-2.5 text-xs font-black text-violet-100 transition hover:bg-violet-400/20"><GraduationCap size={16} /> Set up student link</button>}</>}<button onClick={() => setOnlineLobbyOpen(true)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-5 py-3 text-sm font-black text-emerald-200 transition hover:bg-emerald-400/20"><UsersRound size={17} /> Play with another student</button><button onClick={() => setSettingsOpen(true)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-300/30 bg-indigo-400/10 px-5 py-3 text-sm font-black text-indigo-200 transition hover:bg-indigo-400/20"><Settings2 size={17} /> Alter settings</button><button onClick={startGame} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-400 px-5 py-3.5 text-sm font-black text-indigo-950 transition hover:bg-indigo-300">Start the match <ArrowRight size={17} /></button></div></section></div>}
       {phase === 'intro' && !classroom && <button onClick={startClassicGame} className="fixed right-4 top-4 z-50 inline-flex items-center gap-2 rounded-xl border border-amber-300/40 bg-amber-300 px-3 py-2 text-xs font-black text-amber-950 shadow-lg transition hover:bg-amber-200 sm:right-6 sm:top-6"><Gamepad2 size={15} /> Just play Connect 4</button>}
-      {phase === 'question' && question && <QuestionModal key={`${questionIndex}-${activeTeam}-${isSteal}`} team={team} question={question} seconds={seconds} total={timerDuration} timerEnabled={timerEnabled} isSteal={isSteal} canAnswer={isMyTurn} onAnswerPending={() => setAnswerPending(true)} onAnswer={(correct, timedOut) => { setAnswerPending(false); handleAnswer(correct, timedOut) }} />}
+      {phase === 'question' && question && <QuestionModal key={`${questionIndex}-${activeTeam}-${isSteal}`} team={team} question={question} seconds={seconds} total={timerDuration} timerEnabled={timerEnabled} isSteal={isSteal} canAnswer={isMyTurn} smartboardMode={smartboardMode} onAnswerPending={() => setAnswerPending(true)} onAnswer={(correct, timedOut) => { setAnswerPending(false); handleAnswer(correct, timedOut) }} />}
       {phase === 'complete' && <ResultModal result={winner} team={gameTeams[winner?.teamIndex ?? 0]} onRestart={restartMatch} onContinue={classicMode ? startClassicGame : startGame} />}
       {settingsOpen && <SettingsModal theme={theme} onThemeChange={setTheme} timerEnabled={timerEnabled} onTimerEnabledChange={setTimerEnabled} timerDuration={timerDuration} onTimerDurationChange={setTimerDuration} winRules={winRules} onRulesChange={setWinRules} teamNames={teamNames} onTeamNamesChange={setTeamNames} locked={Boolean(classroom?.settings_locked)} onClose={() => setSettingsOpen(false)} />}
       {teacherModeOpen && <TeacherModeModal deckReady={questionBank.length > 0} deckTitle={deckTitle} pairing={teacherPairing} onPairingChange={(pairing) => { setTeacherPairing(pairing); setTeacherShareUrl('') }} protectDeck={protectTeacherDeck} onProtectDeckChange={(protectedDeck) => { setProtectTeacherDeck(protectedDeck); setTeacherShareUrl('') }} lockSettings={lockStudentSettings} onLockSettingsChange={(locked) => { setLockStudentSettings(locked); setTeacherShareUrl('') }} shareUrl={teacherShareUrl} status={teacherStatus} error={teacherError} onCreateLink={createStudentLink} onCopyLink={copyStudentLink} onClose={() => setTeacherModeOpen(false)} />}

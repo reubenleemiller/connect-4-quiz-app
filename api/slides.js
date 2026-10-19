@@ -1,4 +1,11 @@
 const GOOGLE_SLIDES_ID = /docs\.google\.com\/presentation\/d\/([\w-]+)/
+const IMAGE_SLIDE_CHOICES = ['A)', 'B)', 'C)', 'D)']
+
+function extractAnswerLetter(line) {
+  const labelledAnswer = /^(?:correct\s+)?(?:answer|correct)(?:\s+is)?\s*[:=\-]?\s*\(?([A-D])\)?\b/i
+  const match = line.match(labelledAnswer) || line.match(/^\(?([A-D])\)?[.!]?$/i)
+  return match?.[1]?.toUpperCase() || null
+}
 
 function parseQuestion(slide, index, sourceUrl, compactPrompt = false) {
   const lines = slide
@@ -6,9 +13,8 @@ function parseQuestion(slide, index, sourceUrl, compactPrompt = false) {
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*[•●▪◦]\s*/, '').trim())
     .filter(Boolean)
-  const answerPattern = /^(?:correct\s+)?(?:answer|correct)(?:\s+is)?\s*[:=\-]?\s*\(?([A-D])\)?\b/i
-  const answerLineIndex = lines.findIndex((line) => answerPattern.test(line))
-  const answerLetter = answerLineIndex >= 0 ? lines[answerLineIndex].match(answerPattern)?.[1]?.toUpperCase() : null
+  const answerLineIndex = lines.findIndex((line) => Boolean(extractAnswerLetter(line)))
+  const answerLetter = answerLineIndex >= 0 ? extractAnswerLetter(lines[answerLineIndex]) : null
   const options = []
   const optionLineIndexes = new Set()
 
@@ -19,7 +25,7 @@ function parseQuestion(slide, index, sourceUrl, compactPrompt = false) {
     if (!match) continue
     let text = (match[2] || match[3] || '').trim()
     let consumedIndex = lineIndex
-    if (!text && lines[lineIndex + 1] && !answerPattern.test(lines[lineIndex + 1])) {
+    if (!text && lines[lineIndex + 1] && !extractAnswerLetter(lines[lineIndex + 1])) {
       text = lines[lineIndex + 1]
       consumedIndex = lineIndex + 1
     }
@@ -36,7 +42,12 @@ function parseQuestion(slide, index, sourceUrl, compactPrompt = false) {
     .replace(/\s+/g, ' ')
     .trim()
   const answer = options.findIndex((option) => option.letter === answerLetter)
-  if (options.length < 2 || answer < 0) return null
+  // A Google Slides plain-text export includes presenter notes. When a slide is
+  // made entirely from an image, that answer note is the only extractable text.
+  // Preserve the visual slide in the player and give the team four letter-only
+  // choices rather than rejecting an otherwise usable image question.
+  const isImageOnlyQuestion = options.length === 0 && Boolean(answerLetter)
+  if ((!isImageOnlyQuestion && options.length < 2) || (!isImageOnlyQuestion && answer < 0)) return null
   return {
     number: index + 1,
     topic: 'Google Slides',
@@ -44,13 +55,14 @@ function parseQuestion(slide, index, sourceUrl, compactPrompt = false) {
     // export's surrounding text in the quiz modal, since Google can combine
     // text from neighbouring slides in its plain-text export.
     prompt: '',
-    options: options.map((option) => option.text),
-    answer,
+    options: isImageOnlyQuestion ? IMAGE_SLIDE_CHOICES : options.map((option) => option.text),
+    answer: isImageOnlyQuestion ? answerLetter.charCodeAt(0) - 65 : answer,
     slideUrl: sourceUrl,
+    imageOnly: isImageOnlyQuestion,
   }
 }
 
-const ANSWER_LINE = /^(?:correct\s+)?(?:answer|correct)(?:\s+is)?\s*[:=\-]?\s*\(?[A-D]\)?\b/i
+const ANSWER_LINE = /^(?:(?:correct\s+)?(?:answer|correct)(?:\s+is)?\s*[:=\-]?\s*\(?[A-D]\)?\b|\(?[A-D]\)?[.!]?)$/i
 
 function splitAtAnswerLines(rawText) {
   const blocks = []
@@ -105,7 +117,7 @@ export default async function handler(request, response) {
     if (!upstream.ok) return response.status(422).json({ error: 'Google could not export this deck. Set sharing to “Anyone with the link can view” and try again.' })
     const text = await upstream.text()
     const slides = parseQuestions(text, `https://docs.google.com/presentation/d/${id}/preview`)
-    if (!slides.length) return response.status(422).json({ error: 'No quiz slides found. Use editable text (not an image) with A), A., A:, or A - choices and “Answer: A” or “Correct answer: A”.' })
+    if (!slides.length) return response.status(422).json({ error: 'No quiz slides found. Use editable A–D choices with “Answer: A”, or use an image-only slide and put its correct letter (for example, “Answer: A”) in that slide’s presenter notes.' })
 
     return response.status(200).json({
       title: 'Imported Google Slides deck',

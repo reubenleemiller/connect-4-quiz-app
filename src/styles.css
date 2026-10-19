@@ -98,6 +98,34 @@
   .answer-key-mask { background: #111b50; }
   .theme-light .answer-key-mask { background: #e7efff; border-color: rgba(74, 92, 139, .2); }
 
+  /* Projector and touch-display adjustments. The mode is intentionally local to
+     the screen using it, so a teacher can enable it without changing students'
+     shared game state. */
+  @media (min-width: 1024px) {
+    .smartboard-mode .smartboard-layout {
+      grid-template-columns: minmax(0, 1fr) 300px;
+      grid-template-areas:
+        "teams deck"
+        "board deck";
+      align-items: start;
+    }
+    .smartboard-mode .smartboard-layout > aside:first-child {
+      grid-area: teams;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .smartboard-mode .smartboard-layout > section { grid-area: board; }
+    .smartboard-mode .smartboard-layout > aside:last-child { grid-area: deck; }
+    .smartboard-mode .game-board { padding: 1rem; border-radius: 2rem; }
+    .smartboard-mode .game-grid { gap: .7rem; padding: .7rem; padding-top: 3.5rem; }
+    .smartboard-mode .game-slot { min-height: 5rem; }
+    .smartboard-mode .game-board > div:first-child { gap: .7rem; top: .7rem; }
+    .smartboard-mode .game-board > div:first-child button { height: 2.25rem; }
+  }
+  .smartboard-mode .game-slot:focus-visible,
+  .smartboard-mode button:focus-visible { outline: 4px solid #67e8f9; outline-offset: 3px; }
+  .smartboard-mode .game-slot,
+  .smartboard-mode .game-board > div:first-child button { touch-action: manipulation; }
+
   button[data-press-loading='true'] {
     position: relative !important;
     color: transparent !important;
