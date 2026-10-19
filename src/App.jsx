@@ -107,6 +107,7 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
   const answerLockedRef = useRef(false)
   const answerTimerRef = useRef(null)
   const locked = selected !== null
+  const visualQuestion = smartboardMode || question.imageOnly
 
   useEffect(() => () => window.clearTimeout(answerTimerRef.current), [])
 
@@ -120,7 +121,7 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
 
   return (
     <div className="dialog-backdrop fixed inset-0 z-40 grid place-items-center bg-[#070b1b]/80 p-4 backdrop-blur-md">
-      <section className={`dialog-surface animate-pop-in relative w-full overflow-hidden rounded-[28px] border border-white/15 bg-slate-900 shadow-2xl ${smartboardMode ? 'max-w-6xl' : 'max-w-2xl'}`}>
+      <section className={`dialog-surface animate-pop-in relative w-full overflow-hidden rounded-[28px] border border-white/15 bg-slate-900 shadow-2xl ${visualQuestion ? 'max-w-6xl' : 'max-w-2xl'}`}>
         <div className={`absolute inset-x-0 top-0 h-1 ${isSteal ? 'bg-amber-400' : 'bg-indigo-400'}`} />
         <div className="p-5 sm:p-8">
           <div className="flex items-start justify-between gap-4">
@@ -134,24 +135,25 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
             {timerEnabled ? <TimerDial seconds={seconds} total={total} /> : <div className="grid h-20 w-20 place-items-center rounded-2xl border border-indigo-300/20 bg-indigo-400/10 text-center"><Clock3 size={23} className="text-indigo-300" /><span className="-mt-3 text-[9px] font-black uppercase tracking-[.14em] text-indigo-200">Untimed</span></div>}
           </div>
           {question.slideUrl && <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
-            <div className="flex items-center justify-between px-4 py-2 text-[10px] font-black uppercase tracking-[.16em] text-slate-400"><span>Google Slides · Question {question.number}</span><span className="text-indigo-300">Answer key masked</span></div>
+            <div className="flex items-center justify-between px-4 py-2 text-[10px] font-black uppercase tracking-[.16em] text-slate-400"><span>Google Slides · Question {question.number}</span><span className="text-indigo-300">Slide view</span></div>
             <div className="relative">
-              <iframe title={`Question ${question.number} from Google Slides`} className={`w-full border-0 ${smartboardMode ? 'h-[42vh] min-h-72' : 'h-48 sm:h-60'}`} src={question.slideUrl} allowFullScreen />
-              <div className="answer-key-mask pointer-events-none absolute inset-x-0 bottom-0 z-20 flex h-[17%] items-center justify-center border-t border-white/10 text-[9px] font-black uppercase tracking-[.16em] text-indigo-200">Answer key hidden during play</div>
+              {question.slideImageUrl
+                ? <img src={question.slideImageUrl} alt={`Question ${question.number} slide`} className={`w-full object-contain ${visualQuestion ? 'h-[54vh] min-h-80 max-h-[42rem]' : 'h-48 sm:h-60'}`} />
+                : <iframe title={`Question ${question.number} from Google Slides`} className={`w-full border-0 ${visualQuestion ? 'h-[54vh] min-h-80 max-h-[42rem]' : 'h-48 sm:h-60'}`} src={question.slideUrl} allowFullScreen />}
             </div>
           </div>}
           {question.prompt && <div className="mt-3 rounded-2xl bg-white/[.04] p-5 sm:p-6">
             <p className="mb-2 text-[10px] font-black uppercase tracking-[.17em] text-indigo-300">{question.topic}</p>
             <h2 className="text-xl font-extrabold leading-snug text-white sm:text-2xl">{question.prompt}</h2>
           </div>}
-          <div className={`mt-4 grid gap-2.5 sm:grid-cols-2 ${smartboardMode ? 'lg:grid-cols-4' : ''}`}>
+          <div className={`mt-4 grid gap-2.5 ${visualQuestion ? 'grid-cols-2 sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
             {question.options.map((option, index) => {
               const isChosen = selected === index
               const correct = index === question.answer
               let style = 'border-white/10 bg-white/[.035] hover:border-indigo-300/60 hover:bg-indigo-400/10'
               if (locked && isChosen) style = correct ? 'border-emerald-400 bg-emerald-400/15' : 'border-rose-400 bg-rose-400/15'
-              return <button key={`${option}-${index}`} data-answer-choice="true" onClick={() => pick(index)} disabled={!canAnswer} className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition ${smartboardMode ? 'min-h-20 text-xl' : 'min-h-14'} ${style} ${!canAnswer ? 'cursor-not-allowed opacity-55' : ''}`}>
-                <span className={`grid shrink-0 place-items-center rounded-lg bg-white/10 font-black text-slate-300 group-hover:bg-indigo-400 group-hover:text-white ${smartboardMode ? 'h-12 w-12 text-lg' : 'h-7 w-7 text-xs'}`}>{question.imageOnly ? option : String.fromCharCode(65 + index)}</span>
+              return <button key={`${option}-${index}`} data-answer-choice="true" onClick={() => pick(index)} disabled={!canAnswer} className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition ${visualQuestion ? 'min-h-20 text-xl' : 'min-h-14'} ${style} ${!canAnswer ? 'cursor-not-allowed opacity-55' : ''}`}>
+                <span className={`grid shrink-0 place-items-center rounded-lg bg-white/10 font-black text-slate-300 group-hover:bg-indigo-400 group-hover:text-white ${visualQuestion ? 'h-12 w-12 text-lg' : 'h-7 w-7 text-xs'}`}>{question.imageOnly ? option : String.fromCharCode(65 + index)}</span>
                 {!question.imageOnly && <span className="font-semibold text-slate-100">{option}</span>}
                 {locked && isChosen && <span className="ml-auto flex items-center gap-2">{correct ? <Check className="text-emerald-300" size={19} /> : <X className="text-rose-300" size={19} />}<TinySpinner className={correct ? 'text-emerald-300' : 'text-rose-300'} /></span>}
               </button>

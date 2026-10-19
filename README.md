@@ -17,7 +17,7 @@ Answer: B
 
 The importer also accepts `A.`, `A:`, or `A -` choices, plus `Correct answer: A`.
 
-QuizFour embeds each source slide during play. Put the `Answer:` line in the bottom footer area of the slide: the app masks the bottom 17% of the embedded slide so students cannot see it, while still showing the slide and its question choices.
+QuizFour displays the exact source slide for each question during play. Presenter notes are used only to read the answer key; they are never shown to students, so no part of an image-only slide is hidden.
 
 Image-only question slides are also supported. Put the complete question and choices in the image, then put only the correct letter in that slide's presenter notes — for example `C` or `Answer: C`. The app uses the notes as the answer key and displays four A), B), C), and D) response buttons over the visual slide. Each image-only slide needs its own presenter-note answer.
 
