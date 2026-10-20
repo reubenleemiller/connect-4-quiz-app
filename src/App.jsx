@@ -117,7 +117,7 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
     answerLockedRef.current = true
     setSelected(index)
     onAnswerPending()
-    answerTimerRef.current = window.setTimeout(() => onAnswer(index === question.answer), 1000)
+    answerTimerRef.current = window.setTimeout(() => onAnswer(index === question.answer), 350)
   }
 
   return (
@@ -151,10 +151,10 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
             {question.options.map((option, index) => {
               const isChosen = selected === index
               const correct = index === question.answer
-              let style = 'border-white/10 bg-white/[.035] hover:border-indigo-300/60 hover:bg-indigo-400/10'
+              let style = 'border-white/10 bg-white/[.035] hover:border-indigo-300/60'
               if (locked && isChosen) style = correct ? 'border-emerald-400 bg-emerald-400/15' : 'border-rose-400 bg-rose-400/15'
               return <button key={`${option}-${index}`} data-answer-choice="true" onClick={() => pick(index)} disabled={!canAnswer} className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition ${visualQuestion ? 'min-h-20 text-xl' : 'min-h-14'} ${style} ${!canAnswer ? 'cursor-not-allowed opacity-55' : ''}`}>
-                <span className={`grid shrink-0 place-items-center rounded-lg bg-white/10 font-black text-slate-300 group-hover:bg-indigo-400 group-hover:text-white ${visualQuestion ? 'h-12 w-12 text-lg' : 'h-7 w-7 text-xs'}`}>{question.imageOnly ? option : String.fromCharCode(65 + index)}</span>
+                <span className={`grid shrink-0 place-items-center rounded-lg bg-white/10 font-black text-slate-300 ${visualQuestion ? 'h-12 w-12 text-lg' : 'h-7 w-7 text-xs'}`}>{question.imageOnly ? option : String.fromCharCode(65 + index)}</span>
                 {!question.imageOnly && <span className="font-semibold text-slate-100">{option}</span>}
                 {locked && isChosen && <span className="ml-auto flex items-center gap-2">{correct ? <Check className="text-emerald-300" size={19} /> : <X className="text-rose-300" size={19} />}<TinySpinner className={correct ? 'text-emerald-300' : 'text-rose-300'} /></span>}
               </button>
@@ -369,27 +369,21 @@ export default function App() {
   const [winner, setWinner] = useState(null)
   const [score, setScore] = useState([0, 0])
   const [message, setMessage] = useState('Answer a question to unlock your move.')
+  const [archivedQuestionsOpen, setArchivedQuestionsOpen] = useState(false)
+  const [questionTileLimit, setQuestionTileLimit] = useState(null)
+  const [questionTileAreaHeight, setQuestionTileAreaHeight] = useState(0)
   const timerRef = useRef(null)
   const applyingRemoteState = useRef(false)
   const autoStartedRoomRef = useRef(null)
   const pendingLocalSyncRef = useRef(false)
   const syncVersionRef = useRef(0)
+  const gameBoardRef = useRef(null)
+  const questionTileGridRef = useRef(null)
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setIsAppLoading(false))
     return () => window.cancelAnimationFrame(frame)
   }, [])
-
-  const showButtonSpinner = (event) => {
-    const button = event.target.closest?.('button')
-    if (!button || button.disabled || button.dataset.pressLoading === 'true' || button.dataset.answerChoice === 'true') return
-    button.dataset.pressLoading = 'true'
-    button.setAttribute('aria-busy', 'true')
-    window.setTimeout(() => {
-      delete button.dataset.pressLoading
-      button.removeAttribute('aria-busy')
-    }, 600)
-  }
 
   const markLocalStateChange = () => {
     pendingLocalSyncRef.current = true
@@ -401,6 +395,51 @@ export default function App() {
   const team = gameTeams[activeTeam]
   const availableColumns = useMemo(() => Array.from({ length: COLS }, (_, col) => getOpenRow(board, col) !== -1), [board])
   const isMyTurn = !onlineRoom || (onlineRoom.room_status === 'active' && onlineRoom.seat === activeTeam)
+  const availableQuestionIndexes = useMemo(() => questionBank.reduce((indexes, _, index) => {
+    if (!usedQuestions.includes(index)) indexes.push(index)
+    return indexes
+  }, []), [questionBank, usedQuestions])
+  const archivedQuestionIndexes = useMemo(() => questionBank.reduce((indexes, _, index) => {
+    if (usedQuestions.includes(index)) indexes.push(index)
+    return indexes
+  }, []), [questionBank, usedQuestions])
+  const visibleQuestionIndexes = smartboardMode
+    ? availableQuestionIndexes.slice(0, questionTileLimit ?? 4)
+    : availableQuestionIndexes
+  const hiddenQuestionCount = availableQuestionIndexes.length - visibleQuestionIndexes.length
+
+  useEffect(() => {
+    if (!smartboardMode) {
+      setQuestionTileLimit(null)
+      setQuestionTileAreaHeight(0)
+      return undefined
+    }
+
+    const boardElement = gameBoardRef.current
+    const gridElement = questionTileGridRef.current
+    if (!boardElement || !gridElement) return undefined
+
+    const updateTileCapacity = () => {
+      const boardHeight = Math.floor(boardElement.getBoundingClientRect().height)
+      const gridWidth = gridElement.clientWidth
+      const styles = window.getComputedStyle(gridElement)
+      const gap = Number.parseFloat(styles.columnGap) || 8
+      const tileSize = (gridWidth - gap * 3) / 4
+      const rows = Math.max(1, Math.floor((boardHeight + gap) / (tileSize + gap)))
+      setQuestionTileAreaHeight(boardHeight)
+      setQuestionTileLimit(rows * 4)
+    }
+
+    updateTileCapacity()
+    const observer = new ResizeObserver(updateTileCapacity)
+    observer.observe(boardElement)
+    observer.observe(gridElement)
+    window.addEventListener('resize', updateTileCapacity)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateTileCapacity)
+    }
+  }, [smartboardMode, questionBank.length])
 
   const applyTeacherSettings = (settings) => {
     if (!settings || typeof settings !== 'object') return
@@ -843,7 +882,7 @@ export default function App() {
   const winningCells = new Set((winner?.line || []).map(([row, col]) => `${row}-${col}`))
 
   return (
-    <main onClickCapture={showButtonSpinner} className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''} ${smartboardMode ? 'smartboard-mode' : ''}`}>
+    <main className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''} ${smartboardMode ? 'smartboard-mode' : ''}`}>
       <div className={`mx-auto px-4 py-5 sm:px-6 lg:px-8 ${smartboardMode ? 'max-w-[100rem]' : 'max-w-7xl'}`}>
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-3">
@@ -875,7 +914,7 @@ export default function App() {
               <div className="flex items-center gap-2 rounded-full bg-white/[.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">{timerEnabled ? <Clock3 size={13} className="text-indigo-300" /> : <Sun size={13} className="text-amber-300" />}{timerEnabled ? (classicMode && canDrop && phase === 'board' ? `${formatTime(seconds)} left` : `${formatTime(timerDuration)} timer`) : 'Untimed match'}</div>
             </div>
 
-            <div className="game-board relative rounded-[26px] border border-indigo-300/20 bg-[#182563] p-2 shadow-board sm:p-3">
+            <div ref={gameBoardRef} className="game-board relative rounded-[26px] border border-indigo-300/20 bg-[#182563] p-2 shadow-board sm:p-3">
               <div className="absolute inset-x-3 top-2 z-20 grid grid-cols-7 gap-1 sm:gap-2">{Array.from({ length: COLS }, (_, col) => <button key={col} onClick={() => dropDisc(col)} disabled={!canDrop || !availableColumns[col] || !isMyTurn} aria-label={`Drop in column ${col + 1}`} className={`h-5 rounded-full transition sm:h-7 ${canDrop && availableColumns[col] && isMyTurn ? `${team.disc} cursor-pointer opacity-70 hover:opacity-100` : 'cursor-default bg-white/5'}`} />)}</div>
               <div className="game-grid grid grid-cols-7 gap-1 rounded-[18px] bg-[#111b50] p-1 pt-8 sm:gap-2 sm:p-2 sm:pt-11">
                 {board.map((row, rowIndex) => row.map((cell, colIndex) => {
@@ -896,16 +935,26 @@ export default function App() {
             <p className="mt-1 text-[11px] text-slate-500">{deckTitle}</p>
             {classroom && <div className="mt-3 rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-[11px] leading-4 text-violet-100"><span className="font-black">Teacher Mode</span> · {classroom.deck_protected ? 'This study room is locked to the attached deck.' : 'Choose a deck for this private study room.'}</div>}
             {!questionBank.length && <p className="mt-3 rounded-xl border border-indigo-300/20 bg-indigo-400/10 px-3 py-2 text-[11px] leading-4 text-indigo-200">Paste a public Google Slides link below to load your question tiles.</p>}
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {questionBank.map((item, index) => {
-                const completed = usedQuestions.includes(index)
+            <div ref={questionTileGridRef} className="question-tile-grid mt-3 grid grid-cols-4 gap-2" style={smartboardMode && questionTileAreaHeight ? { maxHeight: `${questionTileAreaHeight}px` } : undefined}>
+              {visibleQuestionIndexes.map((index) => {
+                const item = questionBank[index]
                 const current = questionIndex === index && phase === 'question'
-                return <button key={`${item.prompt}-${index}`} onClick={() => selectQuestion(index)} disabled={completed || canDrop || phase === 'question'} title={completed ? 'Completed question' : `Choose question ${index + 1}`} className={`relative aspect-square rounded-lg border text-xs font-black transition ${completed ? 'cursor-not-allowed border-white/5 bg-slate-950/70 text-slate-600 line-through' : current ? 'border-indigo-300 bg-indigo-400/20 text-indigo-100' : 'border-white/10 bg-white/[.05] text-slate-200 hover:border-indigo-300/70 hover:bg-indigo-400/10'} disabled:opacity-100`}>
-                  {completed ? <Check className="mx-auto text-slate-600" size={15} /> : index + 1}
+                return <button key={`${item.prompt}-${index}`} onClick={() => selectQuestion(index)} disabled={canDrop || phase === 'question'} title={`Choose question ${index + 1}`} className={`relative aspect-square rounded-lg border text-xs font-black transition ${current ? 'border-indigo-300 bg-indigo-400/20 text-indigo-100' : 'border-white/10 bg-white/[.05] text-slate-200 hover:border-indigo-300/70 hover:bg-indigo-400/10'} disabled:opacity-100`}>
+                  {index + 1}
                 </button>
               })}
             </div>
-            <p className="mt-3 text-[11px] leading-4 text-slate-400">Pick a tile to show that slide as the current question. Completed tiles grey out automatically.</p>
+            {hiddenQuestionCount > 0 && <p className="mt-2 text-[11px] leading-4 text-slate-400">{hiddenQuestionCount} more question{hiddenQuestionCount === 1 ? '' : 's'} will appear as tiles are completed.</p>}
+            <p className="mt-3 text-[11px] leading-4 text-slate-400">Pick a tile to show that slide as the current question.</p>
+            {archivedQuestionIndexes.length > 0 && <div className="mt-3 border-t border-white/10 pt-3">
+              <button onClick={() => setArchivedQuestionsOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left text-[11px] font-black uppercase tracking-[.12em] text-slate-300 transition hover:text-white" aria-expanded={archivedQuestionsOpen}>
+                <span>Archived questions <span className="ml-1 text-indigo-300">{archivedQuestionIndexes.length}</span></span>
+                <ChevronDown size={16} className={`transition-transform ${archivedQuestionsOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {archivedQuestionsOpen && <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1">
+                {archivedQuestionIndexes.map((index) => <div key={`archived-${index}`} className="flex items-center gap-2 rounded-lg bg-slate-950/35 px-2.5 py-2 text-xs font-semibold text-slate-400"><Check size={14} className="shrink-0 text-emerald-300" /> Question {index + 1}</div>)}
+              </div>}
+            </div>}
             {(!classroom || !classroom.deck_protected) && <div className="mt-5 border-t border-white/10 pt-4">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-200"><TimerReset size={15} className="text-indigo-300" /> Slide source</div>
               <input value={deckUrl} onChange={(event) => setDeckUrl(event.target.value)} placeholder="Paste public Google Slides link" className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-white outline-none placeholder:text-slate-600 focus:border-indigo-300" />

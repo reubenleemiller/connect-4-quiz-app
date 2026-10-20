@@ -136,25 +136,4 @@
   .smartboard-mode .game-slot,
   .smartboard-mode .game-board > div:first-child button { touch-action: manipulation; }
 
-  button[data-press-loading='true'] {
-    position: relative !important;
-    color: transparent !important;
-    pointer-events: none;
-  }
-  button[data-press-loading='true'] > * { visibility: hidden; }
-  button[data-press-loading='true']::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0.95rem;
-    height: 0.95rem;
-    margin: -0.475rem;
-    border: 2px solid rgba(255, 255, 255, .86);
-    border-top-color: transparent;
-    border-radius: 9999px;
-    animation: spinner .65s linear infinite;
-  }
-  .theme-light button[data-press-loading='true']::after { border-color: #344cb3; border-top-color: transparent; }
-  @keyframes spinner { to { transform: rotate(360deg); } }
 }
