@@ -71,10 +71,10 @@ function AppPreloader() {
 
 function TeamCard({ team, active, score, compact = false }) {
   return (
-    <div className={`relative overflow-hidden rounded-2xl border p-3 transition-all duration-300 ${active ? `${team.border} bg-slate-800/90 shadow-lg ${team.glow}` : 'border-white/10 bg-slate-900/60 opacity-70'} ${compact ? 'min-w-[132px]' : ''}`}>
+    <div className={`team-card relative overflow-hidden rounded-xl border p-3 transition-all duration-300 ${active ? `${team.border} bg-slate-800/90 shadow-lg ${team.glow}` : 'border-white/10 bg-slate-900/60 opacity-70'} ${compact ? 'min-w-0' : ''}`}>
       {active && <div className={`absolute right-3 top-3 h-2 w-2 rounded-full ${team.disc} animate-pulse`} />}
       <div className="flex items-center gap-2.5">
-        <div className={`grid h-9 w-9 place-items-center rounded-xl ${team.disc} text-xs font-black text-slate-950 shadow-inner`}>{team.short}</div>
+        <div className={`grid h-9 w-9 place-items-center rounded-lg ${team.disc} text-xs font-black text-slate-950 shadow-inner`}>{team.short}</div>
         <div className="min-w-0">
           <p className={`truncate text-sm font-bold ${active ? 'text-white' : 'text-slate-300'}`}>{team.name}</p>
           <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[.13em] text-slate-400">{active ? 'On the clock' : 'Standing by'}</p>
@@ -117,7 +117,7 @@ function QuestionModal({ team, question, seconds, total, timerEnabled, isSteal, 
     answerLockedRef.current = true
     setSelected(index)
     onAnswerPending()
-    answerTimerRef.current = window.setTimeout(() => onAnswer(index === question.answer), 350)
+    answerTimerRef.current = window.setTimeout(() => onAnswer(index === question.answer), 150)
   }
 
   return (
@@ -356,7 +356,7 @@ export default function App() {
   const [classroom, setClassroom] = useState(null)
   const [theme, setTheme] = useState('light')
   const [smartboardMode, setSmartboardMode] = useState(false)
-  const [smartboardDeckOpen, setSmartboardDeckOpen] = useState(false)
+  const [boardScale, setBoardScale] = useState(100)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [timerEnabled, setTimerEnabled] = useState(true)
   const [timerDuration, setTimerDuration] = useState(20)
@@ -370,7 +370,7 @@ export default function App() {
   const [winner, setWinner] = useState(null)
   const [score, setScore] = useState([0, 0])
   const [message, setMessage] = useState('Answer a question to unlock your move.')
-  const [archivedQuestionsOpen, setArchivedQuestionsOpen] = useState(false)
+  const [questionOverflowOpen, setQuestionOverflowOpen] = useState(false)
   const [questionTileLimit, setQuestionTileLimit] = useState(null)
   const [questionTileAreaHeight, setQuestionTileAreaHeight] = useState(0)
   const timerRef = useRef(null)
@@ -380,6 +380,7 @@ export default function App() {
   const syncVersionRef = useRef(0)
   const gameBoardRef = useRef(null)
   const questionTileGridRef = useRef(null)
+  const boardResizeRef = useRef(null)
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setIsAppLoading(false))
@@ -404,18 +405,42 @@ export default function App() {
     if (usedQuestions.includes(index)) indexes.push(index)
     return indexes
   }, []), [questionBank, usedQuestions])
-  const visibleQuestionIndexes = smartboardMode
-    ? availableQuestionIndexes.slice(0, questionTileLimit ?? 4)
-    : availableQuestionIndexes
+  const visibleQuestionIndexes = availableQuestionIndexes.slice(0, questionTileLimit ?? 4)
   const hiddenQuestionCount = availableQuestionIndexes.length - visibleQuestionIndexes.length
+  const expandedBoardAmount = Math.max(0, boardScale - 100)
+  const smartboardDeckBaseWidth = typeof window === 'undefined' ? 500 : Math.min(560, Math.max(440, window.innerWidth * 0.3))
+  const boardLayoutStyle = smartboardMode
+    ? {
+        '--team-panel-width': `${Math.max(210, 270 - expandedBoardAmount)}px`,
+        '--deck-panel-width': `${Math.max(390, smartboardDeckBaseWidth - expandedBoardAmount * 3)}px`,
+        '--smartboard-vertical-reserve': `${Math.max(72, 160 - expandedBoardAmount * 2)}px`,
+      }
+    : {
+        '--team-panel-width': `${Math.max(190, 250 - expandedBoardAmount)}px`,
+        '--deck-panel-width': `${Math.max(340, 420 - expandedBoardAmount)}px`,
+      }
+
+  const beginBoardResize = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    boardResizeRef.current = { startX: event.clientX, startScale: boardScale }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const resizeBoard = (event) => {
+    const resizeStart = boardResizeRef.current
+    const boardWidth = gameBoardRef.current?.getBoundingClientRect().width
+    if (!resizeStart || !boardWidth) return
+    const nextScale = resizeStart.startScale + ((event.clientX - resizeStart.startX) / boardWidth) * 100
+    setBoardScale(Math.max(60, Math.min(140, Math.round(nextScale))))
+  }
+
+  const finishBoardResize = (event) => {
+    if (boardResizeRef.current) event.currentTarget.releasePointerCapture?.(event.pointerId)
+    boardResizeRef.current = null
+  }
 
   useEffect(() => {
-    if (!smartboardMode) {
-      setQuestionTileLimit(null)
-      setQuestionTileAreaHeight(0)
-      return undefined
-    }
-
     const boardElement = gameBoardRef.current
     const gridElement = questionTileGridRef.current
     if (!boardElement || !gridElement) return undefined
@@ -426,8 +451,12 @@ export default function App() {
       const styles = window.getComputedStyle(gridElement)
       const gap = Number.parseFloat(styles.columnGap) || 8
       const tileSize = (gridWidth - gap * 3) / 4
-      const rows = Math.max(1, Math.floor((boardHeight + gap) / (tileSize + gap)))
-      setQuestionTileAreaHeight(boardHeight)
+      // Keep the deck aligned with the board in both layouts. Remaining
+      // upcoming and completed questions live in the compact pop-out.
+      const reservedPanelSpace = smartboardMode ? 300 : 270
+      const tileAreaHeight = Math.max(tileSize, boardHeight - reservedPanelSpace)
+      const rows = Math.max(1, Math.floor((tileAreaHeight + gap) / (tileSize + gap)))
+      setQuestionTileAreaHeight(tileAreaHeight)
       setQuestionTileLimit(rows * 4)
     }
 
@@ -830,7 +859,7 @@ export default function App() {
     if (!isSteal) {
       const stealingTeam = activeTeam === 0 ? 1 : 0
       setMessage(timedOut ? `${team.name} ran out of time. ${gameTeams[stealingTeam].name}, take this question for the steal.` : `${team.name} missed it. ${gameTeams[stealingTeam].name}, steal this question!`)
-      window.setTimeout(() => beginQuestion(stealingTeam, true), 350)
+      window.setTimeout(() => beginQuestion(stealingTeam, true), 100)
       return
     }
     const nextTeam = activeTeam === 0 ? 1 : 0
@@ -842,7 +871,7 @@ export default function App() {
     }
     setQuestionIndex((index) => index + 1)
     setMessage(timedOut ? 'Steal window expired. The turn moves on.' : 'Steal missed. The turn moves on.')
-    window.setTimeout(() => beginQuestion(nextTeam, false), 350)
+    window.setTimeout(() => beginQuestion(nextTeam, false), 100)
   }
 
   const dropDisc = (col) => {
@@ -859,12 +888,12 @@ export default function App() {
     if (victory) {
       setWinner({ type: 'win', teamIndex: activeTeam, line: victory.line })
       setScore((current) => current.map((points, index) => index === activeTeam ? points + 1 : points))
-      window.setTimeout(() => setPhase('complete'), 550)
+      window.setTimeout(() => setPhase('complete'), 250)
       return
     }
     if (updated.every((line) => line.every(Boolean))) {
       setWinner({ type: 'tie' })
-      window.setTimeout(() => setPhase('complete'), 550)
+      window.setTimeout(() => setPhase('complete'), 250)
       return
     }
     const nextTeam = activeTeam === 0 ? 1 : 0
@@ -883,16 +912,15 @@ export default function App() {
   const winningCells = new Set((winner?.line || []).map(([row, col]) => `${row}-${col}`))
 
   return (
-    <main className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''} ${smartboardMode ? 'smartboard-mode' : ''} ${smartboardDeckOpen ? 'smartboard-drawer-open' : ''}`}>
-      <div className={`mx-auto px-4 py-5 sm:px-6 lg:px-8 ${smartboardMode ? 'max-w-[100rem]' : 'max-w-7xl'}`}>
+    <main className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''} ${smartboardMode ? 'smartboard-mode' : ''}`}>
+      <div className={`mx-auto ${smartboardMode ? 'max-w-none px-2 py-1 sm:px-3 lg:px-4' : 'max-w-7xl px-4 py-3 sm:px-6 lg:px-8'}`}>
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-300 to-violet-500 text-indigo-950 shadow-glow"><Gamepad2 size={23} strokeWidth={2.5} /></div>
             <div><h1 className="text-xl font-black tracking-tight text-white">QUIZ<span className="text-indigo-300">FOUR</span></h1><p className="text-[9px] font-bold uppercase tracking-[.22em] text-slate-500">Think fast. Link four.</p></div>
           </div>
           <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
-            <button onClick={() => { setSmartboardMode((enabled) => !enabled); setSmartboardDeckOpen(false) }} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardMode ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`} aria-label="Toggle Smartboard mode" aria-pressed={smartboardMode} title="Use larger controls and a projector-friendly layout"><MonitorUp size={14} /> <span className="hidden md:inline">Smartboard</span></button>
-            {smartboardMode && <button onClick={() => setSmartboardDeckOpen((open) => !open)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardDeckOpen ? 'border-indigo-300/45 bg-indigo-400/15 text-indigo-100' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`} aria-expanded={smartboardDeckOpen} aria-controls="smartboard-question-drawer"><Flag size={14} /> <span className="hidden md:inline">Questions</span></button>}
+            <button onClick={() => setSmartboardMode((enabled) => !enabled)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardMode ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-950' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`} aria-label="Toggle Smartboard mode" aria-pressed={smartboardMode} title="Use larger controls and a projector-friendly layout"><MonitorUp size={14} /> <span className="hidden md:inline">Smartboard</span></button>
             <button onClick={() => { if (!teacherModeEnabled) setTeacherModeOpen(true); setTeacherModeEnabled((enabled) => !enabled) }} disabled={Boolean(classroom)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${teacherModeEnabled ? 'border-violet-300/40 bg-violet-400/15 text-violet-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'} disabled:cursor-not-allowed disabled:opacity-55`} role="switch" aria-checked={teacherModeEnabled}><GraduationCap size={14} /> {classroom ? 'Teacher deck' : <><span className="sm:hidden">Teacher</span><span className="hidden sm:inline">Teacher mode</span></>} {!classroom && <span className={`relative h-4 w-7 rounded-full ${teacherModeEnabled ? 'bg-violet-300' : 'bg-slate-600'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition ${teacherModeEnabled ? 'left-3.5' : 'left-0.5'}`} /></span>}</button>
             <button onClick={() => setOnlineLobbyOpen(true)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${onlineRoom ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`}><UsersRound size={14} /> {onlineRoom ? 'Online' : <><span className="sm:hidden">Online</span><span className="hidden sm:inline">Play online</span></>}</button>
             <button onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10" aria-label="Open settings"><Settings2 size={14} /> <span className="hidden sm:inline">Settings</span></button>
@@ -900,28 +928,22 @@ export default function App() {
           </div>
         </header>
 
-        {smartboardMode && <div className="smartboard-toolbar fixed right-4 top-4 z-50 flex items-center gap-2">
-          <button onClick={() => setSmartboardDeckOpen((open) => !open)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardDeckOpen ? 'border-indigo-300/45 bg-indigo-400/15 text-indigo-100' : 'border-white/10 bg-slate-900/90 text-slate-200 hover:border-white/25 hover:bg-slate-800'}`} aria-expanded={smartboardDeckOpen} aria-controls="smartboard-question-drawer"><Flag size={14} /> Questions</button>
-          <button onClick={() => { setSmartboardMode(false); setSmartboardDeckOpen(false) }} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/45 bg-cyan-400/15 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-400/25"><MonitorUp size={14} /> Exit</button>
-        </div>}
-
-        <div className={`mt-6 grid gap-5 lg:items-center ${smartboardMode ? 'smartboard-layout' : 'lg:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
-          <aside className="order-2 grid grid-cols-2 gap-3 lg:order-1 lg:grid-cols-1">
+        <div className={`grid ${smartboardMode ? 'mt-2 gap-2 smartboard-layout' : 'mt-3 gap-3 standard-layout'}`} style={boardLayoutStyle}>
+          <aside className="order-2 grid grid-cols-2 gap-2 lg:order-1 lg:grid-cols-1">
             {gameTeams.map((item, index) => <TeamCard key={item.id} team={item} score={score[index]} active={activeTeam === index && phase !== 'complete' && phase !== 'intro'} compact />)}
+            <div className="game-status col-span-2 grid gap-2.5 rounded-2xl border border-white/10 bg-slate-950/35 p-3 lg:col-span-1">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={`grid h-8 w-8 place-items-center ${canDrop ? team.text : 'text-indigo-400'}`}>
+                  {canDrop ? <ChevronDown size={20} strokeWidth={3} /> : <Clock3 size={19} strokeWidth={2.5} />}
+                </div>
+                <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[.16em] text-indigo-300">{canDrop ? 'Move unlocked' : 'Quiz control'}</p><p className="status-message mt-0.5 text-xs font-semibold leading-4 text-slate-200">{message}</p></div>
+              </div>
+              <div className="flex w-fit items-center gap-2 rounded-lg bg-white/[.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">{timerEnabled ? <Clock3 size={13} className="text-indigo-300" /> : <Sun size={13} className="text-amber-300" />}{timerEnabled ? (classicMode && canDrop && phase === 'board' ? `${formatTime(seconds)} left` : `${formatTime(timerDuration)} timer`) : 'Untimed match'}</div>
+            </div>
           </aside>
 
           <section className="order-1 lg:order-2">
-            <div className="mb-4 flex flex-col items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 sm:flex-row">
-              <div className="flex items-center gap-3">
-                <div className={`grid h-9 w-9 place-items-center rounded-xl ${canDrop ? team.disc : 'bg-indigo-400'} text-slate-950`}>
-                  {canDrop ? <ChevronDown size={20} strokeWidth={3} /> : <Clock3 size={19} strokeWidth={2.5} />}
-                </div>
-                <div><p className="text-[10px] font-black uppercase tracking-[.16em] text-indigo-300">{canDrop ? 'Move unlocked' : 'Quiz control'}</p><p className="text-sm font-semibold text-slate-200">{message}</p></div>
-              </div>
-              <div className="flex items-center gap-2 rounded-full bg-white/[.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-slate-400">{timerEnabled ? <Clock3 size={13} className="text-indigo-300" /> : <Sun size={13} className="text-amber-300" />}{timerEnabled ? (classicMode && canDrop && phase === 'board' ? `${formatTime(seconds)} left` : `${formatTime(timerDuration)} timer`) : 'Untimed match'}</div>
-            </div>
-
-            <div ref={gameBoardRef} className="game-board relative rounded-[26px] border border-indigo-300/20 bg-[#182563] p-2 shadow-board sm:p-3">
+            <div ref={gameBoardRef} className="game-board relative rounded-[26px] border border-indigo-300/20 bg-[#182563] p-2 shadow-board sm:p-3" style={{ '--board-scale': `${boardScale}%` }}>
               <div className="absolute inset-x-3 top-2 z-20 grid grid-cols-7 gap-1 sm:gap-2">{Array.from({ length: COLS }, (_, col) => <button key={col} onClick={() => dropDisc(col)} disabled={!canDrop || !availableColumns[col] || !isMyTurn} aria-label={`Drop in column ${col + 1}`} className={`h-5 rounded-full transition sm:h-7 ${canDrop && availableColumns[col] && isMyTurn ? `${team.disc} cursor-pointer opacity-70 hover:opacity-100` : 'cursor-default bg-white/5'}`} />)}</div>
               <div className="game-grid grid grid-cols-7 gap-1 rounded-[18px] bg-[#111b50] p-1 pt-8 sm:gap-2 sm:p-2 sm:pt-11">
                 {board.map((row, rowIndex) => row.map((cell, colIndex) => {
@@ -933,16 +955,17 @@ export default function App() {
                   </button>
                 }))}
               </div>
+              <div role="slider" tabIndex={0} aria-label="Resize board" aria-valuemin={60} aria-valuemax={140} aria-valuenow={boardScale} title="Drag to resize the board" onPointerDown={beginBoardResize} onPointerMove={resizeBoard} onPointerUp={finishBoardResize} onPointerCancel={finishBoardResize} onKeyDown={(event) => { if (event.key === 'ArrowRight' || event.key === 'ArrowUp') { event.preventDefault(); setBoardScale((scale) => Math.min(140, scale + 5)) } if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') { event.preventDefault(); setBoardScale((scale) => Math.max(60, scale - 5)) } }} className="board-resize-handle absolute bottom-1 right-1 z-30 h-8 w-8 cursor-nwse-resize touch-none rounded-br-[20px]" />
             </div>
-            <div className="mt-4 flex items-center justify-center gap-5 text-[10px] font-bold uppercase tracking-[.13em] text-slate-400"><span className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full bg-rose-500" /> Crimson</span><span className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Gold</span><span className="hidden sm:inline">{Object.values(winRules).filter(Boolean).length} win directions active</span></div>
+            <div className="mt-2 flex items-center justify-center gap-4 text-[10px] font-bold uppercase tracking-[.13em] text-slate-400"><span className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full bg-rose-500" /> Crimson</span><span className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Gold</span><span className="hidden sm:inline">{Object.values(winRules).filter(Boolean).length} win directions active</span></div>
           </section>
 
-          <aside id="smartboard-question-drawer" className="order-3 rounded-2xl border border-white/10 bg-slate-900/55 p-4">
-            <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><Flag size={16} className="text-indigo-300" /><h2 className="text-sm font-black text-white">Question deck</h2></div>{smartboardMode && <button onClick={() => setSmartboardDeckOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-slate-300 transition hover:bg-white/10" aria-label="Close question deck"><X size={16} /></button>}</div>
+          <aside className="question-deck-panel relative order-3 rounded-2xl border border-white/10 bg-slate-900/55 p-4">
+            <div className="flex items-center gap-2"><Flag size={16} className="text-indigo-300" /><h2 className="text-sm font-black text-white">Question deck</h2></div>
             <p className="mt-1 text-[11px] text-slate-500">{deckTitle}</p>
             {classroom && <div className="mt-3 rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-[11px] leading-4 text-violet-100"><span className="font-black">Teacher Mode</span> · {classroom.deck_protected ? 'This study room is locked to the attached deck.' : 'Choose a deck for this private study room.'}</div>}
             {!questionBank.length && <p className="mt-3 rounded-xl border border-indigo-300/20 bg-indigo-400/10 px-3 py-2 text-[11px] leading-4 text-indigo-200">Paste a public Google Slides link below to load your question tiles.</p>}
-            <div ref={questionTileGridRef} className="question-tile-grid mt-3 grid grid-cols-4 gap-2" style={smartboardMode && questionTileAreaHeight ? { maxHeight: `${questionTileAreaHeight}px` } : undefined}>
+            <div ref={questionTileGridRef} className="question-tile-grid mt-3 grid grid-cols-4 gap-2" style={questionTileAreaHeight ? { maxHeight: `${questionTileAreaHeight}px` } : undefined}>
               {visibleQuestionIndexes.map((index) => {
                 const item = questionBank[index]
                 const current = questionIndex === index && phase === 'question'
@@ -951,15 +974,16 @@ export default function App() {
                 </button>
               })}
             </div>
-            {hiddenQuestionCount > 0 && <p className="mt-2 text-[11px] leading-4 text-slate-400">{hiddenQuestionCount} more question{hiddenQuestionCount === 1 ? '' : 's'} will appear as tiles are completed.</p>}
             <p className="mt-3 text-[11px] leading-4 text-slate-400">Pick a tile to show that slide as the current question.</p>
-            {archivedQuestionIndexes.length > 0 && <div className="mt-3 border-t border-white/10 pt-3">
-              <button onClick={() => setArchivedQuestionsOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left text-[11px] font-black uppercase tracking-[.12em] text-slate-300 transition hover:text-white" aria-expanded={archivedQuestionsOpen}>
-                <span>Archived questions <span className="ml-1 text-indigo-300">{archivedQuestionIndexes.length}</span></span>
-                <ChevronDown size={16} className={`transition-transform ${archivedQuestionsOpen ? 'rotate-180' : ''}`} />
+            {(hiddenQuestionCount > 0 || archivedQuestionIndexes.length > 0) && <div className="mt-3 border-t border-white/10 pt-3">
+              <button onClick={() => setQuestionOverflowOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left text-[11px] font-black uppercase tracking-[.12em] text-slate-300 transition hover:text-white" aria-expanded={questionOverflowOpen} aria-controls="more-questions-panel">
+                <span>{hiddenQuestionCount > 0 ? <>More questions <span className="ml-1 text-indigo-300">{hiddenQuestionCount}</span></> : 'Question archive'}</span>
+                <ChevronDown size={16} className={`transition-transform ${questionOverflowOpen ? 'rotate-180' : ''}`} />
               </button>
-              {archivedQuestionsOpen && <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1">
-                {archivedQuestionIndexes.map((index) => <div key={`archived-${index}`} className="flex items-center gap-2 rounded-lg bg-slate-950/35 px-2.5 py-2 text-xs font-semibold text-slate-400"><Check size={14} className="shrink-0 text-emerald-300" /> Question {index + 1}</div>)}
+              {questionOverflowOpen && <div id="more-questions-panel" className="question-overflow-popover absolute inset-x-3 top-14 z-20 max-h-[min(32rem,calc(100dvh-8rem))] overflow-y-auto rounded-2xl border border-indigo-300/25 bg-slate-900 p-3 shadow-2xl">
+                <div className="mb-3 flex items-center justify-between"><p className="text-xs font-black text-white">More questions</p><button onClick={() => setQuestionOverflowOpen(false)} className="grid h-7 w-7 place-items-center rounded-lg text-slate-300 hover:bg-white/10" aria-label="Close more questions"><X size={15} /></button></div>
+                {hiddenQuestionCount > 0 && <><p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-indigo-300">Upcoming</p><div className="grid grid-cols-4 gap-2">{availableQuestionIndexes.slice(visibleQuestionIndexes.length).map((index) => <button key={`upcoming-${index}`} onClick={() => { setQuestionOverflowOpen(false); selectQuestion(index) }} disabled={canDrop || phase === 'question'} className="aspect-square rounded-lg border border-white/10 bg-white/[.05] text-xs font-black text-slate-200 transition hover:border-indigo-300/70 disabled:opacity-100">{index + 1}</button>)}</div></>}
+                {archivedQuestionIndexes.length > 0 && <div className={hiddenQuestionCount > 0 ? 'mt-4 border-t border-white/10 pt-4' : ''}><p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-emerald-300">Completed</p><div className="space-y-1">{archivedQuestionIndexes.map((index) => <div key={`archived-${index}`} className="flex items-center gap-2 rounded-lg bg-slate-950/35 px-2.5 py-2 text-xs font-semibold text-slate-400"><Check size={14} className="shrink-0 text-emerald-300" /> Question {index + 1}</div>)}</div></div>}
               </div>}
             </div>}
             {(!classroom || !classroom.deck_protected) && <div className="mt-5 border-t border-white/10 pt-4">

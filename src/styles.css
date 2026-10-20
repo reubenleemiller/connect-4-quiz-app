@@ -97,49 +97,73 @@
   .theme-light .dialog-surface .bg-\[\#070b1b\] { background-color: #e7efff; }
   .answer-key-mask { background: #111b50; }
   .theme-light .answer-key-mask { background: #e7efff; border-color: rgba(74, 92, 139, .2); }
+  .game-board {
+    --board-scale: 100%;
+    width: min(100%, var(--board-scale));
+    margin-inline: auto;
+  }
+  .board-resize-handle::before {
+    content: '';
+    position: absolute;
+    right: .45rem;
+    bottom: .45rem;
+    width: .72rem;
+    height: .72rem;
+    border-right: 2px solid rgba(255,255,255,.72);
+    border-bottom: 2px solid rgba(255,255,255,.72);
+    box-shadow: 3px 3px 0 -1px rgba(255,255,255,.45);
+  }
+  .board-resize-handle:focus-visible { outline: 2px solid rgba(255,255,255,.8); outline-offset: -4px; }
 
   /* Projector and touch-display adjustments. The mode is intentionally local to
      the screen using it, so a teacher can enable it without changing students'
      shared game state. */
-  @media (min-width: 1024px) {
-    .smartboard-mode header { display: none; }
-    .smartboard-mode .smartboard-layout {
-      /* Smartboards are board-first. Supporting controls live in a drawer so
-         the game can use the complete presentation area. */
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-areas: "board";
+  @media (min-width: 900px) {
+    .standard-layout {
+      grid-template-columns: minmax(0, 1fr) var(--team-panel-width, 12rem) var(--deck-panel-width, 15rem);
+      grid-template-areas: "board teams deck";
       align-items: start;
     }
+    .standard-layout > section { grid-area: board; min-width: 0; }
+    .standard-layout > aside:first-child {
+      grid-area: teams;
+      grid-template-columns: 1fr;
+      align-self: start;
+    }
+    .standard-layout > aside:last-child {
+      grid-area: deck;
+      min-width: 0;
+    }
+    .smartboard-mode .smartboard-layout {
+      /* Keep a focused set of tiles beside the board. The remaining upcoming
+         and completed questions are available from the picker pop-out. */
+      grid-template-columns: minmax(0, 1fr) var(--team-panel-width, 12rem) var(--deck-panel-width, clamp(19rem, 24vw, 24rem));
+      grid-template-areas: "board teams deck";
+      align-items: start;
+    }
+    @media (min-width: 1900px) {
+      .smartboard-mode .smartboard-layout {
+        grid-template-columns: calc((100dvh - var(--smartboard-vertical-reserve, 10rem)) * 1.1667) var(--team-panel-width, 12rem) var(--deck-panel-width, clamp(19rem, 24vw, 24rem));
+        justify-content: start;
+      }
+    }
     .smartboard-mode .smartboard-layout > aside:first-child {
-      display: none;
+      display: grid;
+      grid-area: teams;
+      grid-template-columns: 1fr;
+      align-self: start;
     }
     .smartboard-mode .smartboard-layout > section { grid-area: board; min-width: 0; }
     .smartboard-mode .smartboard-layout > aside:last-child {
-      position: fixed;
-      top: 4.75rem;
-      right: 1rem;
-      z-index: 60;
-      width: min(38rem, calc(100vw - 2rem));
-      max-height: calc(100dvh - 6.25rem);
+      grid-area: deck;
+      position: relative;
       min-width: 0;
-      overflow-y: auto;
-      box-shadow: 0 24px 70px rgba(4, 10, 35, .45);
-      opacity: 0;
-      pointer-events: none;
-      transform: translateX(calc(100% + 1.5rem));
-      visibility: hidden;
-      transition: opacity .2s ease, transform .2s ease, visibility .2s ease;
-    }
-    .smartboard-mode.smartboard-drawer-open .smartboard-layout > aside:last-child {
-      opacity: 1;
-      pointer-events: auto;
-      transform: translateX(0);
-      visibility: visible;
     }
     .smartboard-mode .game-board {
-      width: min(100%, calc((100dvh - 11rem) * 1.1667));
+      /* The quiz-control card sits below the deck, freeing more height while
+         leaving room for the header and the board legend on every screen. */
+      width: min(100%, var(--board-scale), calc((100dvh - var(--smartboard-vertical-reserve, 10rem)) * 1.1667));
       max-width: 100%;
-      margin-inline: auto;
       padding: 1rem;
       border-radius: 2rem;
     }
@@ -150,6 +174,9 @@
   }
   .smartboard-mode .game-slot:focus-visible,
   .smartboard-mode button:focus-visible { outline: 4px solid #67e8f9; outline-offset: 3px; }
+  .smartboard-mode .team-card,
+  .smartboard-mode .question-deck-panel,
+  .smartboard-mode .game-status { border-radius: .75rem; }
   .smartboard-mode .game-slot,
   .smartboard-mode .game-board > div:first-child button { touch-action: manipulation; }
 
