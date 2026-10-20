@@ -102,25 +102,42 @@
      the screen using it, so a teacher can enable it without changing students'
      shared game state. */
   @media (min-width: 1024px) {
+    .smartboard-mode header { display: none; }
     .smartboard-mode .smartboard-layout {
-      /* Keep the board and the question picker in view together. The picker
-         needs considerably more room for its touch targets, while the board
-         is sized from the available viewport height instead of forcing a
-         fixed 5rem-tall slot that can run below a shorter Smartboard. */
-      grid-template-columns: minmax(0, 1fr) clamp(28rem, 36vw, 38rem);
-      grid-template-areas:
-        "teams deck"
-        "board deck";
+      /* Smartboards are board-first. Supporting controls live in a drawer so
+         the game can use the complete presentation area. */
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "board";
       align-items: start;
     }
     .smartboard-mode .smartboard-layout > aside:first-child {
-      grid-area: teams;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      display: none;
     }
     .smartboard-mode .smartboard-layout > section { grid-area: board; min-width: 0; }
-    .smartboard-mode .smartboard-layout > aside:last-child { grid-area: deck; min-width: 0; }
+    .smartboard-mode .smartboard-layout > aside:last-child {
+      position: fixed;
+      top: 4.75rem;
+      right: 1rem;
+      z-index: 60;
+      width: min(38rem, calc(100vw - 2rem));
+      max-height: calc(100dvh - 6.25rem);
+      min-width: 0;
+      overflow-y: auto;
+      box-shadow: 0 24px 70px rgba(4, 10, 35, .45);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(calc(100% + 1.5rem));
+      visibility: hidden;
+      transition: opacity .2s ease, transform .2s ease, visibility .2s ease;
+    }
+    .smartboard-mode.smartboard-drawer-open .smartboard-layout > aside:last-child {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+      visibility: visible;
+    }
     .smartboard-mode .game-board {
-      width: min(100%, calc((100dvh - 18rem) * 1.1667));
+      width: min(100%, calc((100dvh - 11rem) * 1.1667));
       max-width: 100%;
       margin-inline: auto;
       padding: 1rem;

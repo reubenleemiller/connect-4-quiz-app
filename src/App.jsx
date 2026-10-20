@@ -356,6 +356,7 @@ export default function App() {
   const [classroom, setClassroom] = useState(null)
   const [theme, setTheme] = useState('light')
   const [smartboardMode, setSmartboardMode] = useState(false)
+  const [smartboardDeckOpen, setSmartboardDeckOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [timerEnabled, setTimerEnabled] = useState(true)
   const [timerDuration, setTimerDuration] = useState(20)
@@ -882,7 +883,7 @@ export default function App() {
   const winningCells = new Set((winner?.line || []).map(([row, col]) => `${row}-${col}`))
 
   return (
-    <main className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''} ${smartboardMode ? 'smartboard-mode' : ''}`}>
+    <main className={`aurora-bg board-grid min-h-screen overflow-x-hidden ${theme === 'light' ? 'theme-light' : ''} ${smartboardMode ? 'smartboard-mode' : ''} ${smartboardDeckOpen ? 'smartboard-drawer-open' : ''}`}>
       <div className={`mx-auto px-4 py-5 sm:px-6 lg:px-8 ${smartboardMode ? 'max-w-[100rem]' : 'max-w-7xl'}`}>
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-3">
@@ -890,13 +891,19 @@ export default function App() {
             <div><h1 className="text-xl font-black tracking-tight text-white">QUIZ<span className="text-indigo-300">FOUR</span></h1><p className="text-[9px] font-bold uppercase tracking-[.22em] text-slate-500">Think fast. Link four.</p></div>
           </div>
           <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
-            <button onClick={() => setSmartboardMode((enabled) => !enabled)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardMode ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`} aria-label="Toggle Smartboard mode" aria-pressed={smartboardMode} title="Use larger controls and a projector-friendly layout"><MonitorUp size={14} /> <span className="hidden md:inline">Smartboard</span></button>
+            <button onClick={() => { setSmartboardMode((enabled) => !enabled); setSmartboardDeckOpen(false) }} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardMode ? 'border-cyan-300/45 bg-cyan-400/15 text-cyan-100' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`} aria-label="Toggle Smartboard mode" aria-pressed={smartboardMode} title="Use larger controls and a projector-friendly layout"><MonitorUp size={14} /> <span className="hidden md:inline">Smartboard</span></button>
+            {smartboardMode && <button onClick={() => setSmartboardDeckOpen((open) => !open)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardDeckOpen ? 'border-indigo-300/45 bg-indigo-400/15 text-indigo-100' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`} aria-expanded={smartboardDeckOpen} aria-controls="smartboard-question-drawer"><Flag size={14} /> <span className="hidden md:inline">Questions</span></button>}
             <button onClick={() => { if (!teacherModeEnabled) setTeacherModeOpen(true); setTeacherModeEnabled((enabled) => !enabled) }} disabled={Boolean(classroom)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${teacherModeEnabled ? 'border-violet-300/40 bg-violet-400/15 text-violet-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'} disabled:cursor-not-allowed disabled:opacity-55`} role="switch" aria-checked={teacherModeEnabled}><GraduationCap size={14} /> {classroom ? 'Teacher deck' : <><span className="sm:hidden">Teacher</span><span className="hidden sm:inline">Teacher mode</span></>} {!classroom && <span className={`relative h-4 w-7 rounded-full ${teacherModeEnabled ? 'bg-violet-300' : 'bg-slate-600'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition ${teacherModeEnabled ? 'left-3.5' : 'left-0.5'}`} /></span>}</button>
             <button onClick={() => setOnlineLobbyOpen(true)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2 text-xs font-bold transition ${onlineRoom ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25 hover:bg-white/10'}`}><UsersRound size={14} /> {onlineRoom ? 'Online' : <><span className="sm:hidden">Online</span><span className="hidden sm:inline">Play online</span></>}</button>
             <button onClick={() => setSettingsOpen(true)} className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10" aria-label="Open settings"><Settings2 size={14} /> <span className="hidden sm:inline">Settings</span></button>
             <button onClick={restartMatch} className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-white/25 hover:bg-white/10 sm:inline-flex"><RotateCcw size={14} /> Reset</button>
           </div>
         </header>
+
+        {smartboardMode && <div className="smartboard-toolbar fixed right-4 top-4 z-50 flex items-center gap-2">
+          <button onClick={() => setSmartboardDeckOpen((open) => !open)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${smartboardDeckOpen ? 'border-indigo-300/45 bg-indigo-400/15 text-indigo-100' : 'border-white/10 bg-slate-900/90 text-slate-200 hover:border-white/25 hover:bg-slate-800'}`} aria-expanded={smartboardDeckOpen} aria-controls="smartboard-question-drawer"><Flag size={14} /> Questions</button>
+          <button onClick={() => { setSmartboardMode(false); setSmartboardDeckOpen(false) }} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/45 bg-cyan-400/15 px-3 py-2 text-xs font-bold text-cyan-100 transition hover:bg-cyan-400/25"><MonitorUp size={14} /> Exit</button>
+        </div>}
 
         <div className={`mt-6 grid gap-5 lg:items-center ${smartboardMode ? 'smartboard-layout' : 'lg:grid-cols-[240px_minmax(0,1fr)_240px]'}`}>
           <aside className="order-2 grid grid-cols-2 gap-3 lg:order-1 lg:grid-cols-1">
@@ -930,8 +937,8 @@ export default function App() {
             <div className="mt-4 flex items-center justify-center gap-5 text-[10px] font-bold uppercase tracking-[.13em] text-slate-400"><span className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full bg-rose-500" /> Crimson</span><span className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Gold</span><span className="hidden sm:inline">{Object.values(winRules).filter(Boolean).length} win directions active</span></div>
           </section>
 
-          <aside className="order-3 rounded-2xl border border-white/10 bg-slate-900/55 p-4">
-            <div className="flex items-center gap-2"><Flag size={16} className="text-indigo-300" /><h2 className="text-sm font-black text-white">Question deck</h2></div>
+          <aside id="smartboard-question-drawer" className="order-3 rounded-2xl border border-white/10 bg-slate-900/55 p-4">
+            <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><Flag size={16} className="text-indigo-300" /><h2 className="text-sm font-black text-white">Question deck</h2></div>{smartboardMode && <button onClick={() => setSmartboardDeckOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-slate-300 transition hover:bg-white/10" aria-label="Close question deck"><X size={16} /></button>}</div>
             <p className="mt-1 text-[11px] text-slate-500">{deckTitle}</p>
             {classroom && <div className="mt-3 rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-2 text-[11px] leading-4 text-violet-100"><span className="font-black">Teacher Mode</span> · {classroom.deck_protected ? 'This study room is locked to the attached deck.' : 'Choose a deck for this private study room.'}</div>}
             {!questionBank.length && <p className="mt-3 rounded-xl border border-indigo-300/20 bg-indigo-400/10 px-3 py-2 text-[11px] leading-4 text-indigo-200">Paste a public Google Slides link below to load your question tiles.</p>}
