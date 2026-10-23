@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/slides.js": { "maxDuration": 10 }
+    "api/slides.js": { "maxDuration": 10 },
+    "api/ping-supabase.js": { "maxDuration": 10 }
   }
 }
