@@ -46,6 +46,15 @@ The app supports code-based invitations and random student pairing through Supab
 
 The app never uses a service-role key. Anonymous students can only read rooms in which they are a player; game creation, joining, and state changes are handled through narrowly scoped database functions.
 
+### Keep Supabase awake
+
+Use `GET /api/ping-supabase` (or `POST`) to run a lightweight Supabase query and keep the database active.
+For a one-time ping after deploy, run:
+
+```bash
+curl -X POST https://<your-vercel-domain>/api/ping-supabase
+```
+
 In the app, choose **Play with another student**. Select **Find a random opponent** to enter the random queue, or **Create private room** to generate a six-character room code and a scannable invite QR. The host receives a **Start game** button as soon as their opponent joins.
 
 ## Teacher Mode
