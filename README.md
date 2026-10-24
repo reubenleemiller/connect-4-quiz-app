@@ -48,7 +48,8 @@ The app never uses a service-role key. Anonymous students can only read rooms in
 
 ### Keep Supabase awake
 
-Use `GET /api/ping-supabase` (or `POST`) to run a lightweight Supabase query and keep the database active.
+Vercel runs `GET /api/ping-supabase` automatically every 6 hours via `vercel.json` cron scheduling.
+The endpoint also accepts `POST` if you want to trigger a manual keepalive.
 For a one-time ping after deploy, run:
 
 ```bash
