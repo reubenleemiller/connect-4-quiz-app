@@ -48,8 +48,12 @@ The app never uses a service-role key. Anonymous students can only read rooms in
 
 ### Keep Supabase awake
 
-Vercel runs `GET /api/ping-supabase` automatically every 6 hours via `vercel.json` cron scheduling.
-The endpoint also accepts `POST` if you want to trigger a manual keepalive.
+This repo includes a GitHub Actions workflow (`.github/workflows/ping-supabase-keepalive.yml`) that pings
+`/api/ping-supabase` every 6 hours and on manual dispatch.
+Set the repository secret `SUPABASE_KEEPALIVE_URL` to your deployed endpoint URL (for example
+`https://<your-vercel-domain>/api/ping-supabase`).
+
+The endpoint accepts both `GET` and `POST` for manual keepalive.
 For a one-time ping after deploy, run:
 
 ```bash
