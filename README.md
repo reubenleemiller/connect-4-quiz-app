@@ -1,6 +1,6 @@
 # QuizFour
 
-A two-team Connect 4 quiz game built with React, Tailwind CSS, and Vite. It deploys directly to Vercel.
+A two-team Connect 4 quiz game built with React, Tailwind CSS, and Vite. It deploys directly to Vercel
 
 ## Google Slides question decks
 
