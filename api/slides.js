@@ -79,6 +79,13 @@ function splitAtAnswerLines(rawText) {
   return blocks.filter(Boolean)
 }
 
+function createSlideVisual(presentationId, pageId) {
+  return {
+    slideUrl: 'https://docs.google.com/presentation/d/' + presentationId + '/embed?start=false&loop=false&delayms=3000&slide=id.' + encodeURIComponent(pageId),
+    slideImageUrl: 'https://docs.google.com/presentation/d/' + presentationId + '/export/png?id=' + presentationId + '&pageid=' + encodeURIComponent(pageId),
+  }
+}
+
 function getSlideVisuals(previewMarkup, presentationId) {
   // The public preview serializes each slide as [pageId, position, ...]. Use
   // that ordered metadata to request the matching slide, rather than assuming
@@ -87,13 +94,30 @@ function getSlideVisuals(previewMarkup, presentationId) {
   const slideRecord = /\["([^"]+)",(\d+),"",\[\],\[\],\[\],\[\],\[\[\],false,\d+\],\[\],"(?:\\.|[^"])*",\["https:\/\/docs\.google\.com\/slides-images/g
   for (const match of previewMarkup.matchAll(slideRecord)) {
     const pageId = match[1]
-    pageByPosition[Number(match[2])] = {
-      // This fallback is still slide-specific if Google's PNG cannot load.
-      slideUrl: 'https://docs.google.com/presentation/d/' + presentationId + '/embed?start=false&loop=false&delayms=3000&slide=id.' + encodeURIComponent(pageId),
-      slideImageUrl: 'https://docs.google.com/presentation/d/' + presentationId + '/export/png?id=' + presentationId + '&pageid=' + encodeURIComponent(pageId),
+    // Preview positions are one-based; text export blocks are zero-based.
+    pageByPosition[Number(match[2]) - 1] = createSlideVisual(presentationId, pageId)
+  }
+  if (pageByPosition.some(Boolean)) return pageByPosition
+
+  // Google periodically changes the preview's internal array shape. Its page
+  // identifiers still appear in document order, so recover them from the more
+  // stable pageId fields when the thumbnail record above is unavailable.
+  const pageIds = []
+  const seenPageIds = new Set()
+  const pageIdPatterns = [
+    /["']pageId["']\s*[:=]\s*["']([\w-]+)["']/g,
+    /[?&]pageid=([\w-]+)/g,
+    /slide=id\.([\w-]+)/g,
+  ]
+  for (const pattern of pageIdPatterns) {
+    for (const match of previewMarkup.matchAll(pattern)) {
+      const pageId = match[1]
+      if (seenPageIds.has(pageId)) continue
+      seenPageIds.add(pageId)
+      pageIds.push(pageId)
     }
   }
-  return pageByPosition
+  return pageIds.map((pageId) => createSlideVisual(presentationId, pageId))
 }
 
 function parseQuestions(rawText, sourceUrl, slideVisuals = []) {
@@ -117,7 +141,7 @@ function parseQuestions(rawText, sourceUrl, slideVisuals = []) {
   return candidateSlides
     .flatMap((slide) => {
       const visual = slideVisuals[slide.sourceIndex]
-      const question = parseQuestion(slide.text, slide.sourceIndex, visual?.slideUrl || sourceUrl, slide.compactPrompt)
+      const question = parseQuestion(slide.text, slide.sourceIndex, visual?.slideUrl || '', slide.compactPrompt)
       return question ? [{ ...question, slideImageUrl: visual?.slideImageUrl || null }] : []
     })
     .map((question, index) => ({ ...question, number: index + 1 }))
@@ -143,7 +167,9 @@ export default async function handler(request, response) {
     if (!upstream.ok) return response.status(422).json({ error: 'Google could not export this deck. Set sharing to “Anyone with the link can view” and try again.' })
     const text = await upstream.text()
     const slideVisuals = preview?.ok ? getSlideVisuals(await preview.text(), id) : []
+    if (!slideVisuals.some(Boolean)) return response.status(422).json({ error: 'Google did not provide slide-specific page data for this deck. Refresh the sharing link and try importing again.' })
     const slides = parseQuestions(text, previewUrl, slideVisuals)
+    if (slides.some((slide) => !slide.slideUrl)) return response.status(422).json({ error: 'Google returned incomplete slide-specific page data for this deck. Refresh the sharing link and try importing again.' })
     if (!slides.length) return response.status(422).json({ error: 'No quiz slides found. Use editable A–D choices with “Answer: A”, or use an image-only slide and put its correct letter (for example, “Answer: A”) in that slide’s presenter notes.' })
 
     return response.status(200).json({
