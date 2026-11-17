@@ -141,7 +141,10 @@ function parseQuestions(rawText, sourceUrl, slideVisuals = []) {
   return candidateSlides
     .flatMap((slide) => {
       const visual = slideVisuals[slide.sourceIndex]
-      const question = parseQuestion(slide.text, slide.sourceIndex, visual?.slideUrl || '', slide.compactPrompt)
+      // Google accepts ordinal preview links (id.p1, id.p2, …). This keeps a
+      // deck usable even if its preview markup no longer exposes page IDs.
+      const slideUrl = visual?.slideUrl || sourceUrl + '?slide=id.p' + (slide.sourceIndex + 1)
+      const question = parseQuestion(slide.text, slide.sourceIndex, slideUrl, slide.compactPrompt)
       return question ? [{ ...question, slideImageUrl: visual?.slideImageUrl || null }] : []
     })
     .map((question, index) => ({ ...question, number: index + 1 }))
@@ -167,9 +170,7 @@ export default async function handler(request, response) {
     if (!upstream.ok) return response.status(422).json({ error: 'Google could not export this deck. Set sharing to “Anyone with the link can view” and try again.' })
     const text = await upstream.text()
     const slideVisuals = preview?.ok ? getSlideVisuals(await preview.text(), id) : []
-    if (!slideVisuals.some(Boolean)) return response.status(422).json({ error: 'Google did not provide slide-specific page data for this deck. Refresh the sharing link and try importing again.' })
     const slides = parseQuestions(text, previewUrl, slideVisuals)
-    if (slides.some((slide) => !slide.slideUrl)) return response.status(422).json({ error: 'Google returned incomplete slide-specific page data for this deck. Refresh the sharing link and try importing again.' })
     if (!slides.length) return response.status(422).json({ error: 'No quiz slides found. Use editable A–D choices with “Answer: A”, or use an image-only slide and put its correct letter (for example, “Answer: A”) in that slide’s presenter notes.' })
 
     return response.status(200).json({
